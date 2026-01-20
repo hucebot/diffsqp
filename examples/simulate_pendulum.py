@@ -1,7 +1,6 @@
 import torch
 import numpy as np
 
-# Assuming your folders have __init__.py files
 from diffsqp.dynamics import PendulumDynamics
 from diffsqp.utils.plotting import plot_pendulum_trajectories
 

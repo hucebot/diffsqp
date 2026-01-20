@@ -12,17 +12,21 @@ class LqrCost(Cost):
         self.R = R
 
     def l(self, x, u):
-        x_term = torch.bmm(torch.bmm(torch.transpose(x, 1, 2), self.Q), x)
-        u_term = torch.bmm(torch.bmm(torch.transpose(u, 1, 2), self.R), u)
+        x_term = torch.bmm(
+            torch.bmm(torch.transpose(x, 1, 2), self.Q), x.unsqueeze(2)
+        ).squeeze(2)
+        u_term = torch.bmm(
+            torch.bmm(torch.transpose(u, 1, 2), self.R), u.unsqueeze(2)
+        ).squeeze(2)
         return 0.5 * (x_term + u_term)
 
     def lx(self, x, u):
         """Gradient w.r.t x (B, n_state, 1)"""
-        return torch.bmm(self.Q, x)
+        return torch.bmm(self.Q, x.unsqueeze(2)).squeeze(2)
 
     def lu(self, x, u):
         """Gradient w.r.t u (B, n_ctrl, 1)"""
-        return torch.bmm(self.R, u)
+        return torch.bmm(self.R, u.unsqueeze(2)).squeeze(2)
 
     def lxx(self, x, u):
         """Hessian w.r.t xx (B, n_state, n_state)"""

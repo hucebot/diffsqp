@@ -5,32 +5,47 @@ from diffsqp.problems import Problem
 
 
 class LqrSolver:
-    """
-    Batch-friendly Equality Constrained Finite Horizon LQR.
-    """
-
     def __init__(self, prob: Problem) -> None:
         self.prob = prob
         self.horizon = self.prob.horizon
         self.n_batch = self.prob.variables.shape[0]
+
+        # For the backward pass
         self.V = [None] * self.horizon
         self.u = [None] * self.horizon
         self.h = [None] * (self.horizon - 1)
         self.H = [None] * (self.horizon - 1)
         self.G = [None] * (self.horizon - 1)
+        self.K = [None] * (self.horizon - 1)
+        self.k = [None] * (self.horizon - 1)
         self.gamma = [None] * (self.horizon - 1)
+
+        # For the forward pass
+        self.delta_x = [None] * self.horizon
+        self.delta_u = [None] * (self.horizon - 1)
+        self.lagrange_mult = [None] * (self.horizon - 1)
 
     # def ensure_batch(t): return t.expand(n_batch, -1, -1) if t.dim() == 2 else t
     #
     # A, B, Q, R, Qf = map(ensure_batch, [A, B, Q, R, Qf])
 
     def solve(self):
+        # 1. Backward Pass
+        self.backward_pass()
+
+        # 2. Forward Pass
+        self.forward_pass()
+
+        # Return corrections
+        return self.delta_x, self.delta_u
+
+    def backward_pass(self):
         x_F = self.prob.state(self.horizon - 1)
         self.V[-1] = self.prob.costs[-1].lxx(x_F, None)
         self.u[-1] = self.prob.costs[-1].lx(x_F, None)
 
-        # 1. Backward Pass
-        for k in range(self.horizon - 2, 0, -1):
+        # Loop backwards in horizon
+        for k in range(self.horizon - 2, -1, -1):
             nB = self.n_batch
             nx = self.prob.n_state
             nu = self.prob.n_ctrl
@@ -89,22 +104,22 @@ class LqrSolver:
             assert self.H[k].shape == torch.Size([nB, nu, nu])
             # Calculate K_k, k_k
             Hk_inv = torch.inverse(self.H[k])
-            K_k = -bmm(Hk_inv, self.G[k])
-            K_kT = torch.transpose(K_k, 1, 2)
-            k_k = -bmm(Hk_inv, self.h[k].unsqueeze(2)).squeeze(2)
+            self.K[k] = -bmm(Hk_inv, self.G[k])
+            K_kT = torch.transpose(self.K[k], 1, 2)
+            self.k[k] = -bmm(Hk_inv, self.h[k].unsqueeze(2)).squeeze(2)
 
-            assert K_k.shape == torch.Size([nB, nu, nx])
-            assert k_k.shape == torch.Size([nB, nu])
+            assert self.K[k].shape == torch.Size([nB, nu, nx])
+            assert self.k[k].shape == torch.Size([nB, nu])
 
             # Calculate V_k
             prod1 = bmm(AT, bmm(self.V[k + 1], A))
-            prod2 = bmm(K_kT, bmm(self.H[k], K_k))
+            prod2 = bmm(K_kT, bmm(self.H[k], self.K[k]))
             self.V[k] = Q + prod1 - prod2
 
             assert self.V[k].shape == torch.Size([nB, nx, nx])
             # Calculate u_k
             prod1 = bmm(K_kT, r_k.unsqueeze(2)).squeeze(2)
-            prod2 = torch.transpose(A + bmm(B, K_k), 1, 2)
+            prod2 = torch.transpose(A + bmm(B, self.K[k]), 1, 2)
             prod3 = bmm(self.V[k + 1], self.gamma[k].unsqueeze(2)).squeeze(2)
             prod3 = self.u[k + 1] + prod3
 
@@ -112,5 +127,32 @@ class LqrSolver:
 
             assert self.u[k].shape == torch.Size([nB, nx])
 
-        # 2. Forward Pass
-        # return torch.stack(states, dim=1), torch.stack(inputs, dim=1)
+    def forward_pass(self):
+        nB = self.n_batch
+        nx = self.prob.n_state
+        nu = self.prob.n_ctrl
+
+        self.delta_x[0] = torch.zeros([nB, nx])
+        for k in range(self.horizon - 1):
+            x_k = self.prob.state(k)
+            u_k = self.prob.control(k)
+            A_k = self.prob.stage_dynamics[k].fx(x_k, u_k, self.prob.dt)
+            B_k = self.prob.stage_dynamics[k].fu(x_k, u_k, self.prob.dt)
+            term1 = bmm(
+                A_k + bmm(B_k, self.K[k]), self.delta_x[k].unsqueeze(2)
+            ).squeeze(2)
+            term2 = bmm(B_k, self.k[k].unsqueeze(2)).squeeze(2)
+            term3 = self.gamma[k]
+            self.delta_x[k + 1] = term1 + term2 + term3
+
+            term1 = bmm(self.K[k], self.delta_x[k].unsqueeze(2)).squeeze(2)
+            term2 = self.k[k]
+            self.delta_u[k] = term1 + term2
+
+            term1 = bmm(self.V[k], self.delta_x[k].unsqueeze(2)).squeeze(2)
+            term2 = self.u[k]
+            self.lagrange_mult[k] = term1 + term2
+
+            assert self.delta_x[k + 1].shape == torch.Size([nB, nx])
+            assert self.delta_u[k].shape == torch.Size([nB, nu])
+            assert self.lagrange_mult[k].shape == torch.Size([nB, nx])

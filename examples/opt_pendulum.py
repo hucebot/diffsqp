@@ -1,51 +1,81 @@
 import torch
 
 from diffsqp.problems import Problem
-from diffsqp.costs import LqrCost
+from diffsqp.costs import LqrCost, TerminalCost
 from diffsqp.dynamics import PendulumDynamics
-from diffsqp.solvers import AdmmSolver
-from diffsqp.solvers import LqrSolver
+from diffsqp.solvers import Lqr
+from diffsqp.solvers import Admm
+from diffsqp.solvers import Ssqp
 
-horizon = 10
+# torch.set_default_device("cuda")
+
+horizon = 30
 dt = 0.05
 n_batch = 3
 n_state = 2
 n_ctrl = 1
+x_des = torch.tensor([torch.pi, 0.0]).repeat(n_batch, 1)
+
 prob = Problem(horizon, dt, n_state, n_ctrl)
 
 dyn = PendulumDynamics(m=1.0, l=1.0, b=0.2, grav=9.81)
-Q = 1e-3 * torch.eye(n_state).repeat(n_batch, 1, 1)
-R = 0.5 * torch.eye(n_ctrl).repeat(n_batch, 1, 1)
+Q = 1e-5 * torch.eye(n_state).repeat(n_batch, 1, 1)
+R = 1e-3 * torch.eye(n_ctrl).repeat(n_batch, 1, 1)
 cost = LqrCost(Q, R)
 
-Qf = 1e3 * torch.eye(n_state).repeat(n_batch, 1, 1)
-Rf = 0.0 * torch.eye(n_ctrl).repeat(n_batch, 1, 1)
-final_cost = LqrCost(Qf, Rf)
+Qf = 1e6 * torch.eye(n_state).repeat(n_batch, 1, 1)
+final_cost = TerminalCost(Qf, x_des)
 
 # Set stage cost and constraints
 for i in range(horizon - 1):
+    prob.states.append(torch.zeros((n_batch, n_state)))
+    prob.controls.append(torch.zeros((n_batch, n_ctrl)))
     prob.costs.append(cost)
     prob.stage_dynamics.append(dyn)
 # Set terminal cost
+# prob.states.append(torch.zeros((n_batch, n_state)))
+prob.states.append(x_des)
 prob.costs.append(final_cost)
 
-# Set initial guess
-prob.variables = torch.ones((n_batch, n_state * horizon + (horizon - 1) * n_ctrl))
-
 # Create solver object
-# solver = LqrSolver(prob)
+# solver = Lqr(prob)
 # solver.solve()
 
-solver = AdmmSolver(prob)
-solver.step()
+# solver = Admm(prob)
+# solver.step()
 
-# print(solver.V[0])
-# print(solver.u[0])
-# print(solver.h)
-# print(solver.delta_x[-1])
-# print(solver.delta_u[-1])
-# print(solver.lagrange_mult[-1])
-#
-# print(prob.state(2))
-# prob.set_state(2, torch.ones((n_batch, n_state)))
-# print(prob.state(2))
+solver = Ssqp(prob)
+
+solver.solve()
+print(solver.terminate)
+print(prob.states)
+
+import matplotlib.pyplot as plt
+
+
+def plot_states(states_list):
+    # 1. Stack the list of tensors into one tensor: (horizon, n_batch, n_x)
+    states_tensor = torch.stack(states_list)
+
+    # 2. Extract the first batch (index 0) and convert to numpy
+    # Shape becomes: (horizon, n_x)
+    first_batch = states_tensor[:, 0, :].detach().cpu().numpy()
+
+    horizon, n_x = first_batch.shape
+    time = range(horizon)
+
+    # 3. Plot each dimension of the state
+    for i in range(n_x):
+        plt.plot(time, first_batch[:, i], label=f"State $x_{{{i}}}$")
+
+    plt.xlabel("Time Step $k$")
+    plt.ylabel("Value")
+    plt.title("State Trajectory (First Batch)")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    # plt.savefig("state_trajectory.png")
+    plt.show()
+
+
+plot_states(prob.states)

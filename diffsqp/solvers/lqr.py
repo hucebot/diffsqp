@@ -8,7 +8,7 @@ class Lqr:
     def __init__(self, prob: Problem) -> None:
         self.prob = prob
         self.horizon = self.prob.horizon
-        self.n_batch = self.prob.variables.shape[0]
+        self.n_batch = self.prob.states[0].shape[0]
 
         # For the backward pass
         self.V = [None] * self.horizon
@@ -40,9 +40,9 @@ class Lqr:
         return self.delta_x, self.delta_u
 
     def backward_pass(self):
-        x_F = self.prob.state(self.horizon - 1)
-        self.V[-1] = self.prob.costs[-1].lxx(x_F, None)
-        self.u[-1] = self.prob.costs[-1].lx(x_F, None)
+        x_F = self.prob.states[self.horizon - 1]
+        self.V[-1] = self.prob.costs[-1].lxx(x_F)
+        self.u[-1] = self.prob.costs[-1].lx(x_F)
 
         # Loop backwards in horizon
         for k in range(self.horizon - 2, -1, -1):
@@ -50,10 +50,10 @@ class Lqr:
             nx = self.prob.n_state
             nu = self.prob.n_ctrl
 
-            x_k = self.prob.state(k)
-            u_k = self.prob.control(k)
+            x_k = self.prob.states[k]
+            u_k = self.prob.controls[k]
             x_pred = self.prob.stage_dynamics[k].f(x_k, u_k, self.prob.dt)
-            self.gamma[k] = x_pred - self.prob.state(k + 1)
+            self.gamma[k] = x_pred - self.prob.states[k + 1]
 
             Q = self.prob.costs[k].lxx(x_k, u_k)
             q = self.prob.costs[k].lx(x_k, u_k)
@@ -134,8 +134,8 @@ class Lqr:
 
         self.delta_x[0] = torch.zeros([nB, nx])
         for k in range(self.horizon - 1):
-            x_k = self.prob.state(k)
-            u_k = self.prob.control(k)
+            x_k = self.prob.states[k]
+            u_k = self.prob.controls[k]
             A_k = self.prob.stage_dynamics[k].fx(x_k, u_k, self.prob.dt)
             B_k = self.prob.stage_dynamics[k].fu(x_k, u_k, self.prob.dt)
             term1 = bmm(

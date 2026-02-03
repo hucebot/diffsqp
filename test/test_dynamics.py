@@ -35,7 +35,12 @@ def test_dynamics_derivatives(
     fx_numeric = torch.stack(fx_numeric)
     fu_numeric = torch.stack(fu_numeric)
 
-    # 3. Compare
+    # 3. Assert dimensions
+    assert dyn.f(x, u, dt).shape == (n_batch, dyn.nx)
+    assert fx_analytic.shape == (n_batch, dyn.nx, dyn.nx)
+    assert fu_analytic.shape == (n_batch, dyn.nx, dyn.nu)
+
+    # 4. Compare derivatives
     assert torch.allclose(fx_analytic, fx_numeric, atol=1e-6)
     assert torch.allclose(fu_analytic, fu_numeric, atol=1e-6)
 

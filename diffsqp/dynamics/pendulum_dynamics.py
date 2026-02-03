@@ -5,8 +5,7 @@ from diffsqp.dynamics import Dynamics
 
 class PendulumDynamics(Dynamics):
     def __init__(self, m: float, l: float, b: float, grav: float = 9.81):
-        self.nq = 1
-        self.nv = 1
+        self.nx = 2
         self.nu = 1
         self.m = m
         self.l = l

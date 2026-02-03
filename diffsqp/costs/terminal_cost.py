@@ -15,7 +15,7 @@ class TerminalCost:
         x_term = torch.bmm(
             torch.bmm(torch.transpose((x - self.x_des).unsqueeze(2), 1, 2), self.Q),
             (x - self.x_des).unsqueeze(2),
-        ).squeeze(2)
+        ).squeeze(1, 2)
         return 0.5 * (x_term)
 
     def lx(self, x):

@@ -53,6 +53,7 @@ def test_cost_derivatives(cost: Cost):
     lux_numeric = get_jacobian(u.grad, x)
 
     # Assert shapes
+    assert cost.l(x, u).shape == (n_batch,)
     assert lx_analytic.shape == (n_batch, n_state)
     assert lu_analytic.shape == (n_batch, n_ctrl)
     assert lxx_analytic.shape == (n_batch, n_state, n_state)

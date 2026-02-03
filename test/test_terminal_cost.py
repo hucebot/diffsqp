@@ -43,6 +43,7 @@ def test_terminal_cost_derivatives(cost: TerminalCost):
     lxx_numeric = get_jacobian(x.grad, x)
 
     # Assert shapes
+    assert cost.l(x).shape == (n_batch,)
     assert lx_analytic.shape == (n_batch, n_state)
     assert lxx_analytic.shape == (n_batch, n_state, n_state)
 

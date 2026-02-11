@@ -16,7 +16,7 @@ dyn = CartPoleDynamics(mc=0.5, mp=0.3, lp=0.2, grav=9.81)
 dt = 0.01
 tf = 1.0
 horizon = int(tf / dt)
-n_batch = 8
+n_batch = 4
 n_state = dyn.nx
 n_ctrl = dyn.nu
 
@@ -25,11 +25,11 @@ x_init = torch.tensor(
         [0.0, 0.0, 0.0, 0.0],
         [0.1, torch.pi, 0.0, 0.0],
         [-0.1, torch.pi, 0.0, 0.0],
-        [0.0, 0.0, 0.0, 0.0],
-        [0.1, torch.pi, 0.0, 0.0],
-        [-0.1, torch.pi, 0.0, 0.0],
-        [0.0, 0.0, 0.0, 0.0],
-        [0.1, torch.pi, 0.0, 0.0],
+        # [-4.6296e-02, 2.8597e00, 2.8562e-01, 2.3995e00],
+        # [0.1, torch.pi, 0.0, 0.0],
+        # [-0.1, torch.pi, 0.0, 0.0],
+        # [0.0, 0.0, 0.0, 0.0],
+        # [0.1, torch.pi, 0.0, 0.0],
     ]
 )
 # x_init = torch.tensor([0.0, torch.pi, 0.0, 0.0]).repeat(n_batch, 1)

@@ -24,11 +24,15 @@ class Ssqp:
             self.prob.controls,
         )
 
-        self.terminate = torch.zeros((self.n_batch), dtype=torch.bool)
+        self.terminated = torch.zeros((self.n_batch), dtype=torch.bool)
 
     def solve(self):
-        while not torch.all(self.terminate):
+        iter = 0
+        while not torch.all(self.terminated):
             self.step()
+            iter += 1
+            if iter >= 30:
+                break
 
     def step(self):
         delta_x, delta_u, costates = self.admm_solver.solve()
@@ -38,10 +42,10 @@ class Ssqp:
 
     def line_search(self, delta_x, delta_u, max_iter: float = 10):
         alpha = torch.ones((self.n_batch, 1))
-        dones = torch.zeros(self.n_batch, dtype=torch.bool)
+        line_search_done = self.terminated.clone()
         i = 0
         max_iter = 10
-        while (not torch.all(dones)) and (i < max_iter):
+        while (not torch.all(line_search_done)) and (i < max_iter):
             i += 1
             gamma = torch.zeros((self.n_batch, 1))
 
@@ -58,21 +62,25 @@ class Ssqp:
             # Update successful batches
             cost_improved = cost < self.best_cost
             gamma_improved = gamma < self.best_gamma
-            update_mask = (cost_improved | gamma_improved) & ~dones
+            update_mask = (cost_improved | gamma_improved) & ~line_search_done
             if update_mask.any():
                 for k in range(self.horizon - 1):
                     self.prob.states[k][update_mask] = x_cand[k][update_mask]
                     self.prob.controls[k][update_mask] = u_cand[k][update_mask]
                 self.prob.states[-1][update_mask] = x_cand[-1][update_mask]
                 # Mark batches as finished
-                dones[update_mask] = True
+                line_search_done[update_mask] = True
 
             # Update best cost and gamma
-            self.best_cost[cost_improved & ~dones] = cost[cost_improved & ~dones]
-            self.best_gamma[gamma_improved & ~dones] = gamma[gamma_improved & ~dones]
+            self.best_cost[cost_improved & ~line_search_done] = cost[
+                cost_improved & ~line_search_done
+            ]
+            self.best_gamma[gamma_improved & ~line_search_done] = gamma[
+                gamma_improved & ~line_search_done
+            ]
 
             # Update alpha for failed batches
-            failed_mask = ~update_mask & ~dones
+            failed_mask = ~update_mask & ~line_search_done
             if failed_mask.any():
                 alpha[failed_mask] *= 0.5
 
@@ -98,11 +106,12 @@ class Ssqp:
 
         # terminate_Lx = max_Lx < self.eps
         # terminate_Lu = max_Lu < self.eps
-        print(max_viols)
+        # print(max_viols)
+        print(self.terminated, max_viols)
         terminate_viols = max_viols < self.eps
 
-        # self.terminate = torch.logical_or(terminate_Lx, terminate_Lu)
-        self.terminate = terminate_viols
+        # self.terminated = torch.logical_or(terminate_Lx, terminate_Lu)
+        self.terminated = terminate_viols
 
     def calc_cadidate_solutions(self, alpha, curr_x, curr_u, delta_x, delta_u):
         x_cand = []

@@ -103,10 +103,9 @@ class Lqr:
 
             assert self.H[k].shape == torch.Size([nB, nu, nu])
             # Calculate K_k, k_k
-            Hk_inv = torch.inverse(self.H[k])
-            self.K[k] = -bmm(Hk_inv, self.G[k])
+            self.K[k] = -torch.linalg.solve(self.H[k], self.G[k])
             K_kT = torch.transpose(self.K[k], 1, 2)
-            self.k[k] = -bmm(Hk_inv, self.h[k].unsqueeze(2)).squeeze(2)
+            self.k[k] = -torch.linalg.solve(self.H[k], self.h[k])
 
             assert self.K[k].shape == torch.Size([nB, nu, nx])
             assert self.k[k].shape == torch.Size([nB, nu])

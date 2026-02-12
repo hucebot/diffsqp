@@ -25,11 +25,7 @@ x_init = torch.tensor(
         [0.0, 0.0, 0.0, 0.0],
         [0.1, torch.pi, 0.0, 0.0],
         [-0.1, torch.pi, 0.0, 0.0],
-        # [-4.6296e-02, 2.8597e00, 2.8562e-01, 2.3995e00],
-        # [0.1, torch.pi, 0.0, 0.0],
-        # [-0.1, torch.pi, 0.0, 0.0],
-        # [0.0, 0.0, 0.0, 0.0],
-        # [0.1, torch.pi, 0.0, 0.0],
+        [-4.6296e-02, 2.8597e00, 2.8562e-01, 2.3995e00],
     ]
 )
 # x_init = torch.tensor([0.0, torch.pi, 0.0, 0.0]).repeat(n_batch, 1)
@@ -95,6 +91,8 @@ import matplotlib.pyplot as plt
 #
 #
 # plot_states(prob.states)
+
+print(solver.terminated)
 
 import numpy as np
 

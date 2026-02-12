@@ -29,9 +29,10 @@ class Ssqp:
     def solve(self):
         iter = 0
         while not torch.all(self.terminated):
+            print("iteration: ", iter)
             self.step()
             iter += 1
-            if iter >= 30:
+            if iter >= 100:
                 break
 
     def step(self):
@@ -44,7 +45,6 @@ class Ssqp:
         alpha = torch.ones((self.n_batch, 1))
         line_search_done = self.terminated.clone()
         i = 0
-        max_iter = 10
         while (not torch.all(line_search_done)) and (i < max_iter):
             i += 1
             gamma = torch.zeros((self.n_batch, 1))

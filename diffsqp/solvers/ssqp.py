@@ -86,32 +86,42 @@ class Ssqp:
 
     def check_termination(self):
         ## Lagrangian Gradient ##
-        Lx, Lu = self.calc_Lx_Lu()
-        max_Lx = torch.norm(Lx, p=float("inf"), dim=1)
-        max_Lu = torch.norm(Lx, p=float("inf"), dim=1)
+        # Lx, Lu = self.calc_Lx_Lu()
+        # max_Lx = torch.norm(Lx, p=float("inf"), dim=1)
+        # max_Lu = torch.norm(Lx, p=float("inf"), dim=1)
 
         ## Dynamics Violation ##
         # Track largest violation for each batch
-        max_viols = torch.zeros(self.n_batch)
+        max_dyn_viols = torch.zeros(self.n_batch)
+        max_uact_viols = torch.zeros(self.n_batch)
         for k in range(self.horizon - 1):
-            viol = self.calc_dynamics_violation(
+            dyn_viol = self.calc_dynamics_violation(
                 self.prob.stage_dynamics[k].f,
                 self.prob.states[k + 1],
                 self.prob.states[k],
                 self.prob.controls[k],
             )
-            inf_norm = torch.norm(viol, p=float("inf"), dim=1)
-            index_mask = inf_norm > max_viols
-            max_viols[index_mask] = inf_norm[index_mask]
+            dyn_inf_norm = torch.norm(dyn_viol, p=float("inf"), dim=1)
+            index_mask = dyn_inf_norm > max_dyn_viols
+            max_dyn_viols[index_mask] = dyn_inf_norm[index_mask]
+
+            uact_viol = self.calc_underactuation_violation(
+                self.prob.stage_dynamics[k].g,
+                self.prob.states[k],
+                self.prob.controls[k],
+            )
+            uact_inf_norm = torch.norm(uact_viol, p=float("inf"), dim=1)
+            index_mask = uact_inf_norm > max_uact_viols
+            max_uact_viols[index_mask] = uact_inf_norm[index_mask]
 
         # terminate_Lx = max_Lx < self.eps
         # terminate_Lu = max_Lu < self.eps
-        # print(max_viols)
-        print(self.terminated, max_viols)
-        terminate_viols = max_viols < self.eps
+        print(self.terminated, max_dyn_viols, max_uact_viols)
+        terminate_dyn_viols = max_dyn_viols < self.eps
+        terminate_uact_viols = max_uact_viols < self.eps
 
         # self.terminated = torch.logical_or(terminate_Lx, terminate_Lu)
-        self.terminated = terminate_viols
+        self.terminated = torch.logical_and(terminate_dyn_viols, terminate_uact_viols)
 
     def calc_cadidate_solutions(self, alpha, curr_x, curr_u, delta_x, delta_u):
         x_cand = []
@@ -129,19 +139,22 @@ class Ssqp:
             # Calculate total trajectory cost
             cost += self.prob.costs[k].l(x_cand[k], u_cand[k])
             # Calculate constraint violations
-            viol = self.calc_dynamics_violation(
+            dyn_viol = self.calc_dynamics_violation(
                 self.prob.stage_dynamics[k].f,
                 x_cand[k + 1],
                 x_cand[k],
                 u_cand[k],
             )
-            gamma += torch.norm(viol, p=float("inf"), dim=1)
+            gamma += torch.norm(dyn_viol, p=float("inf"), dim=1)
         # Add final node cost
         cost += self.prob.costs[-1].l(x_cand[-1])
         return cost, gamma
 
     def calc_dynamics_violation(self, f, x_next, x, u):
         return x_next - f(x, u, self.prob.dt)
+
+    def calc_underactuation_violation(self, g, x, u):
+        return g(x, u)
 
     # Calculate Lagrangian gradients
     def calc_Lx_Lu(self):

@@ -20,21 +20,21 @@ class Lqr:
 
         self.Dx = [None] * self.horizon
         self.Du = [None] * (self.horizon - 1)
-
-        # Only for API cohesion, does nothing (for now)
-        self.delta_lambda = [torch.zeros((self.n_batch, self.n_state))] * (self.horizon)
+        # Lagrange multipliers of the actuation part
+        self.Dpi = [None] * (self.horizon - 1)
+        # Lagrange multipliers of the underactuation part
+        self.Dlam = [None] * (self.horizon - 1)
 
     def solve(self):
         self.backward_pass_()
         self.forward_pass_()
 
         # Return corrections
-        return self.Dx, self.Du
+        return self.Dx, self.Du, self.Dpi, self.Dlam
 
     def backward_pass_(self):
         x_N = self.prob.states[self.horizon - 1]
         self.V[-1], self.v[-1] = self.calc_final_cost_terms_(x_N, self.prob.costs[-1])
-
         for i in range(self.horizon - 2, -1, -1):
             x_lin = self.prob.states[i]
             u_lin = self.prob.controls[i]
@@ -43,12 +43,24 @@ class Lqr:
             Q, R, S, q, r = self.calc_linearized_cost_terms_(
                 x_lin, u_lin, self.prob.costs[i]
             )
-            A, B, b = self.calc_linearized_dynamic_terms_(
+            A, B, b, C, D, e = self.calc_linearized_dynamic_terms_(
                 x_lin, u_lin, x_next, self.prob.stage_dynamics[i]
             )
 
             (self.K[i], self.k[i], self.V[i], self.v[i]) = self.riccati_backward_(
-                Q=Q, q=q, R=R, r=r, S=S, V=self.V[i + 1], v=self.v[i + 1], A=A, B=B, b=b
+                Q=Q,
+                q=q,
+                R=R,
+                r=r,
+                S=S,
+                V=self.V[i + 1],
+                v=self.v[i + 1],
+                A=A,
+                B=B,
+                b=b,
+                C=C,
+                D=D,
+                e=e,
             )
 
     def forward_pass_(self):
@@ -63,14 +75,21 @@ class Lqr:
             Dx0 = self.Dx[i]
             K = self.K[i]
             k = self.k[i]
-            A, B, b = self.calc_linearized_dynamic_terms_(
+            A, B, b, C, D, e = self.calc_linearized_dynamic_terms_(
                 x_lin, u_lin, x_next, self.prob.stage_dynamics[i]
             )
             self.Dx[i + 1], self.Du[i] = self.riccati_forward_(
                 Dx0=Dx0, K=K, k=k, A=A, B=B, b=b
             )
 
-    def riccati_backward_(self, Q, q, R, r, S, V, v, A, B, b):
+            # print("Cx + Du + e = ", (mv(C, self.Dx[i]) + mv(D, self.Du[i]) + e)[0, 0])
+
+    def riccati_backward_(self, Q, q, R, r, S, V, v, A, B, b, C, D, e):
+        nB = Q.shape[0]
+        nx = Q.shape[1]
+        nu = R.shape[2]
+        ng = None if D is None else D.shape[1]  # n of equality constraints
+
         AT = torch.transpose(A, 1, 2)
         BT = torch.transpose(B, 1, 2)
         ST = torch.transpose(S, 1, 2)
@@ -83,11 +102,41 @@ class Lqr:
         S_ = S + mm(BT, mm(V, A))
 
         S_T = S_.transpose(1, 2)
-        K_ = torch.linalg.solve(R_, -S_)
-        k_ = torch.linalg.solve(R_, -r_)
 
-        V_ = Q_ - mm(S_T, -K_)
-        v_ = q_ - mv(S_T, -k_)
+        K_ = None
+        k_ = None
+        V_ = None
+        v_ = None
+        if C is None:
+            K_ = torch.linalg.solve(R_, -S_)
+            k_ = torch.linalg.solve(R_, -r_)
+            V_ = Q_ + mm(S_T, K_)
+            v_ = q_ + mv(S_T, k_)
+        else:
+            S_ext = torch.cat([S_, C], dim=1)
+            r_ext = torch.cat([r_, e], dim=1)
+            S_extT = S_ext.transpose(1, 2)
+
+            dim = R_.shape[1] + D.shape[1]
+            R_ext = torch.zeros((nB, dim, dim))
+            R_ext[:, 0:nu, 0:nu] = R_
+            R_ext[:, nu:, 0:nu] = D
+            R_ext[:, 0:nu, nu:] = torch.transpose(D, 1, 2)
+
+            K_ext = torch.linalg.solve(R_ext, -S_ext)
+            k_ext = torch.linalg.solve(R_ext, -r_ext)
+            # Sanity check
+            nB = self.n_batch
+            nx = self.prob.n_state
+            nu = self.prob.n_ctrl
+            assert K_ext.shape == torch.Size([nB, nu + ng, nx])
+            assert k_ext.shape == torch.Size([nB, nu + ng])
+
+            K_ = K_ext[:, 0:nu, :]
+            k_ = k_ext[:, 0:nu]
+
+            V_ = Q_ + mm(S_extT, K_ext)
+            v_ = q_ + mv(S_extT, k_ext)
 
         # Sanity checks
         nB = self.n_batch
@@ -130,7 +179,14 @@ class Lqr:
         b = x_pred - x_next
         A = dynamics.fx(x_lin, u_lin, self.prob.dt)
         B = dynamics.fu(x_lin, u_lin, self.prob.dt)
-        return A, B, b
+        C = None
+        D = None
+        e = None
+        if dynamics.type == "inverse":
+            C = dynamics.gx(x_lin, u_lin)
+            D = dynamics.gu(x_lin, u_lin)
+            e = dynamics.g(x_lin, u_lin)
+        return A, B, b, C, D, e
 
     def calc_final_cost_terms_(self, x_N, final_cost):
         V = final_cost.lxx(x_N)

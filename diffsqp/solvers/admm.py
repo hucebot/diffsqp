@@ -1,7 +1,7 @@
 import torch
 
 from diffsqp.problems import Problem
-from diffsqp.solvers import EqualityConstrainedLqr as Lqr
+from diffsqp.solvers import Lqr
 
 
 class Admm:
@@ -17,31 +17,32 @@ class Admm:
         n_ctrl = self.prob.n_ctrl
         self.delta_x = [None] * self.prob.horizon
         self.delta_u = [None] * (self.prob.horizon - 1)
-        self.delta_l = [None] * (self.prob.horizon - 1)
+        self.delta_pi = [None] * (self.prob.horizon - 1)
+        self.delta_lam = [None] * (self.prob.horizon - 1)
 
         self.lqr_solver = Lqr(prob)
 
     def step(self):
         # Get delta_x and delta_y guess from LQR
-        delta_x_bar, delta_u_bar, delta_l_bar = self.lqr_solver.solve()
+        delta_x_lqr, delta_u_lqr, delta_pi_lqr, delta_lam_lqr = self.lqr_solver.solve()
 
         # Update self.delta_x, self.delta_u
-        self.update_deltas(delta_x_bar, delta_u_bar, delta_l_bar)
-        # self.calc_costates()
+        self.update_deltas(delta_x_lqr, delta_u_lqr, delta_pi_lqr, delta_lam_lqr)
 
     def solve(self):
         # Step
         self.step()
         # Return corrections
-        return self.delta_x, self.delta_u, self.delta_l
+        return self.delta_x, self.delta_u, self.delta_pi, self.delta_lam
 
-    def update_deltas(self, delta_x_bar, delta_u_bar, delta_l_bar):
+    def update_deltas(self, delta_x_bar, delta_u_bar, delta_pi_bar, delta_lam_bar):
         ##############################################
         ## RETURNING JUST THE LQR GUESS FOR TESTING ##
         ##############################################
         self.delta_x = delta_x_bar
         self.delta_u = delta_u_bar
-        self.delta_l = delta_l_bar
+        self.delta_pi = delta_pi_bar
+        self.delta_lam = delta_lam_bar
 
         # # If first, use the LQR guess only, otherwise take a linear interpolation
         # first = self.delta_x[0] is None

@@ -2,7 +2,7 @@ import torch
 
 from diffsqp.problems import Problem
 from diffsqp.costs import LqrCost, TerminalCost
-from diffsqp.dynamics import CartPoleDynamics
+from diffsqp.dynamics import CartPoleDynamics, CartPoleInverseDynamics
 from diffsqp.solvers import Lqr
 from diffsqp.solvers import Admm
 from diffsqp.solvers import Ssqp
@@ -11,7 +11,8 @@ from diffsqp.utils.animate import CartPoleAnimator
 
 torch.set_default_device("cpu")
 
-dyn = CartPoleDynamics(mc=0.5, mp=0.3, lp=0.2, grav=9.81)
+# dyn = CartPoleDynamics(mc=0.5, mp=0.3, lp=0.2, grav=9.81)
+dyn = CartPoleInverseDynamics(mc=0.5, mp=0.3, lp=0.2, grav=9.81)
 
 dt = 0.01
 tf = 1.0
@@ -33,23 +34,20 @@ x_des = torch.tensor([0.0, torch.pi, 0.0, 0.0]).repeat(n_batch, 1)
 
 prob = Problem(horizon, dt, n_state, n_ctrl)
 
-Q = 1e-5 * torch.eye(n_state).repeat(n_batch, 1, 1)
+Q = 1e-6 * torch.eye(n_state).repeat(n_batch, 1, 1)
 R = 1e-3 * torch.eye(n_ctrl).repeat(n_batch, 1, 1)
-cost = LqrCost(Q, R)
-
-Qf = 1e6 * torch.eye(n_state).repeat(n_batch, 1, 1)
-final_cost = TerminalCost(Qf, x_des)
+Qf = 1e5 * torch.eye(n_state).repeat(n_batch, 1, 1)
 
 # Set stage cost and constraints
 for i in range(horizon - 1):
     prob.states.append(x_init.clone())
     prob.controls.append(torch.zeros((n_batch, n_ctrl)))
-    prob.costs.append(cost)
+    prob.costs.append(LqrCost(Q, R))
     prob.stage_dynamics.append(dyn)
 # Set terminal cost
 # prob.states.append(torch.zeros((n_batch, n_state)))
 prob.states.append(x_des)
-prob.costs.append(final_cost)
+prob.costs.append(TerminalCost(Qf, x_des))
 
 # Create solver object
 # solver = Lqr(prob)

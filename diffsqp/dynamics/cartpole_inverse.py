@@ -6,6 +6,7 @@ from diffsqp.dynamics import Dynamics
 
 class CartPoleInverseDynamics(Dynamics):
     def __init__(self, mc: float, mp: float, lp: float, grav: float = 9.81):
+        self.type = "inverse"
         self.nx = 4
         self.nq = 2
         self.nv = 2

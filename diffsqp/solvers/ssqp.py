@@ -6,7 +6,7 @@ from diffsqp.solvers import Admm
 
 
 class Ssqp:
-    def __init__(self, prob: Problem, eps: float = 1e-4) -> None:
+    def __init__(self, prob: Problem, qp_solver, eps: float = 1e-4) -> None:
         self.eps = eps
 
         self.prob = prob
@@ -16,7 +16,7 @@ class Ssqp:
         nx = self.prob.n_state
         nu = self.prob.n_ctrl
 
-        self.admm_solver = Admm(prob)
+        self.admm_solver = Admm(prob, qp_solver)
 
         # Log best line search metrics
         self.best_cost, self.best_gamma, self.best_uact = self.calc_metrics(

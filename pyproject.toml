@@ -5,7 +5,8 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "cvxpylayers>=1.0.0",
     "matplotlib>=3.10.8",
-    "numpy>=2.4.0",
-    "torch>=2.9.1",
+    "qpth>=0.0.18",
+    "torch>=2.10.0",
 ]

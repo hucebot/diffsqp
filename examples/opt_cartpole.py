@@ -1,3 +1,4 @@
+import time
 import torch
 
 from diffsqp.problems import Problem
@@ -9,7 +10,8 @@ from diffsqp.solvers import Ssqp
 
 from diffsqp.utils.animate import CartPoleAnimator
 
-torch.set_default_device("cpu")
+# torch.set_default_dtype(torch.double)
+# torch.set_default_device("cuda")
 
 # dyn = CartPoleDynamics(mc=0.5, mp=0.3, lp=0.2, grav=9.81)
 dyn = CartPoleInverseDynamics(mc=0.5, mp=0.3, lp=0.2, grav=9.81)
@@ -29,7 +31,7 @@ x_init = torch.tensor(
         [-4.6296e-02, 2.8597e00, 2.8562e-01, 2.3995e00],
     ]
 )
-# x_init = torch.tensor([0.0, torch.pi, 0.0, 0.0]).repeat(n_batch, 1)
+# x_init = torch.tensor([0.0, 0.0, 0.0, 0.0]).repeat(n_batch, 1)
 x_des = torch.tensor([0.0, torch.pi, 0.0, 0.0]).repeat(n_batch, 1)
 
 prob = Problem(horizon, dt, n_state, n_ctrl)
@@ -50,15 +52,15 @@ prob.states.append(x_des)
 prob.costs.append(TerminalCost(Qf, x_des))
 
 # Create solver object
-# solver = Lqr(prob)
-# solver.solve()
+qp_solver = Lqr(prob)
+solver = Ssqp(prob, qp_solver)
 
-# solver = Admm(prob)
-# solver.step()
-
-solver = Ssqp(prob)
+start = time.time()
 
 solver.solve()
+
+end = time.time()
+print("Time elapsed: ", end - start, " s.")
 
 import matplotlib.pyplot as plt
 

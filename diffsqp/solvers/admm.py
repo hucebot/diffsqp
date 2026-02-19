@@ -5,7 +5,7 @@ from diffsqp.solvers import Lqr
 
 
 class Admm:
-    def __init__(self, prob: Problem, a: float = 1.6) -> None:
+    def __init__(self, prob: Problem, qp_solver, a: float = 1.6) -> None:
         assert a > 0.0 and a < 2.0
 
         self.a = a
@@ -20,14 +20,14 @@ class Admm:
         self.delta_pi = [None] * (self.prob.horizon - 1)
         self.delta_lam = [None] * (self.prob.horizon - 1)
 
-        self.lqr_solver = Lqr(prob)
+        self.qp_solver = qp_solver
 
     def step(self):
         # Get delta_x and delta_y guess from LQR
-        delta_x_lqr, delta_u_lqr, delta_pi_lqr, delta_lam_lqr = self.lqr_solver.solve()
+        delta_x_qp, delta_u_qp, delta_pi_qp, delta_lam_qp = self.qp_solver.solve()
 
         # Update self.delta_x, self.delta_u
-        self.update_deltas(delta_x_lqr, delta_u_lqr, delta_pi_lqr, delta_lam_lqr)
+        self.update_deltas(delta_x_qp, delta_u_qp, delta_pi_qp, delta_lam_qp)
 
     def solve(self):
         # Step

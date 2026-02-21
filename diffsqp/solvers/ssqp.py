@@ -1,5 +1,5 @@
 import torch
-from torch import bmm
+from diffsqp.utils.math import mm, mv
 
 from diffsqp.problems import Problem
 from diffsqp.solvers import Admm
@@ -196,10 +196,10 @@ class Ssqp:
             lu = self.prob.costs[k].lu
             fx = self.prob.stage_dynamics[k].fx
             fu = self.prob.stage_dynamics[k].fu
-            Lx += lx(x, u) + bmm(
+            Lx += lx(x, u) + mm(
                 torch.transpose(fx(x, u, dt), 1, 2), lagr.unsqueeze(2)
             ).squeeze(2)
-            Lu += lu(x, u) + bmm(
+            Lu += lu(x, u) + mm(
                 torch.transpose(fu(x, u, dt), 1, 2), lagr.unsqueeze(2)
             ).squeeze(2)
         # Add final node cost

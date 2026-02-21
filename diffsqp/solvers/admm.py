@@ -1,7 +1,6 @@
 import torch
 
 from diffsqp.problems import Problem
-from diffsqp.solvers import Lqr
 
 
 class Admm:

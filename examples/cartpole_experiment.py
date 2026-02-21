@@ -13,7 +13,9 @@ def main(args):
     # Set default device (cpu or gpu)
     torch.set_default_device(args.dev)
 
-    # torch.set_default_dtype(torch.double)
+    if args.qp == "qpth":
+        # QPTH required double precision
+        torch.set_default_dtype(torch.double)
 
     if args.model == "forward":
         dyn = CartPoleDynamics(mc=0.5, mp=0.3, lp=0.2, grav=9.81)
@@ -32,9 +34,9 @@ def main(args):
 
     x_des = torch.tensor([0.0, torch.pi, 0.0, 0.0]).repeat(n_batch, 1)
     if args.task == "swingup":
-        x_init = args.std * torch.randn((nB, nx))
+        x_init = args.std * torch.randn((n_batch, n_state))
     elif args.task == "balance":
-        x_init = x_des + args.std * torch.randn((nB, nx))
+        x_init = x_des + args.std * torch.randn((n_batch, n_state))
 
     prob = Problem(horizon, dt, n_state, n_ctrl)
 
@@ -67,12 +69,7 @@ def main(args):
 
     # Create solver object
     solver = Ssqp(prob, qp_solver)
-
-    start = time.time()
-    solver.solve()
-    end = time.time()
-
-    print("Time elapsed: ", end - start, " s.")
+    info = solver.solve()
 
 
 if __name__ == "__main__":

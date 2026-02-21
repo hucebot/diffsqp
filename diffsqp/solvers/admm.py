@@ -1,3 +1,4 @@
+import time
 import torch
 
 from diffsqp.problems import Problem
@@ -23,16 +24,22 @@ class Admm:
 
     def step(self):
         # Get delta_x and delta_y guess from LQR
+        start = time.time()
         delta_x_qp, delta_u_qp, delta_pi_qp, delta_lam_qp = self.qp_solver.solve()
+        end = time.time()
+        t_elapsed_qp = end - start
 
         # Update self.delta_x, self.delta_u
         self.update_deltas(delta_x_qp, delta_u_qp, delta_pi_qp, delta_lam_qp)
 
+        # Return time elapsed for QP solve
+        return t_elapsed_qp
+
     def solve(self):
         # Step
-        self.step()
+        t_elapsed_qp = self.step()
         # Return corrections
-        return self.delta_x, self.delta_u, self.delta_pi, self.delta_lam
+        return self.delta_x, self.delta_u, self.delta_pi, self.delta_lam, t_elapsed_qp
 
     def update_deltas(self, delta_x_bar, delta_u_bar, delta_pi_bar, delta_lam_bar):
         ##############################################

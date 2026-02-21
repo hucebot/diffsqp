@@ -1,3 +1,5 @@
+import sys
+import time
 import torch
 from diffsqp.utils.math import mm, mv
 
@@ -6,7 +8,10 @@ from diffsqp.solvers import Admm
 
 
 class Ssqp:
-    def __init__(self, prob: Problem, qp_solver, eps: float = 1e-4) -> None:
+    def __init__(
+        self, prob: Problem, qp_solver, max_iter=100, eps: float = 1e-4
+    ) -> None:
+        self.max_iter = max_iter
         self.eps = eps
 
         self.prob = prob
@@ -26,27 +31,71 @@ class Ssqp:
 
         self.terminated = torch.zeros((self.n_batch), dtype=torch.bool)
 
+        self.log = {
+            "iterations": 0,
+            "t_qp_solve": [0.0] * self.max_iter,
+            "t_line_search": [0.0] * self.max_iter,
+            "t_solve": 0.0,
+            "terminated": torch.zeros((self.n_batch), dtype=torch.bool),
+        }
+
     def solve(self, max_iter=100):
-        iter = 0
-        while not torch.all(self.terminated):
-            print("################")
-            print("SSQP Iteration: ", iter)
-            self.step()
-            iter += 1
-            if iter >= max_iter:
+        # Solve for max_iter steps
+
+        print("####### SSQP Solver ########")
+        print("############################")
+        print("############################")
+        t_solve_start = time.time()
+        for iter in range(max_iter):
+
+            # Step solver
+            t_qp_solve, t_line_search, alpha, dones = self.step()
+
+            # cursor up one line
+            # delete last line
+            sys.stdout.write("\x1b[1A")
+            sys.stdout.write("\x1b[2K")
+            sys.stdout.write("\x1b[1A")
+            sys.stdout.write("\x1b[2K")
+            print("SSQP Iteration: ", iter + 1)
+            print(
+                "Terminated Environments: ",
+                torch.count_nonzero(self.terminated).item(),
+                "/",
+                self.terminated.shape[0],
+            )
+
+            self.log["t_qp_solve"][iter] = t_qp_solve
+            self.log["t_line_search"][iter] = t_line_search
+
+            # Check for terminations
+            if torch.all(self.terminated):
                 break
+        t_solve_end = time.time()
+
+        # Fill log
+        self.log["t_solve"] = t_solve_end - t_solve_start
+        self.log["ssqp_iterations"] = iter + 1
+        self.log["terminated"] = self.terminated
+        return self.log
 
     def step(self):
-        delta_x, delta_u, delta_pi, delta_lam = self.admm_solver.solve()
-        self.line_search(delta_x, delta_u)
+        delta_x, delta_u, delta_pi, delta_lam, t_qp_solve = self.admm_solver.solve()
+
+        start = time.time()
+        alpha, dones = self.line_search(delta_x, delta_u)
+        end = time.time()
+        t_line_search = end - start
+
         self.check_termination()
+
+        return t_qp_solve, t_line_search, alpha, dones
 
     def line_search(self, delta_x, delta_u, max_iter: float = 10):
         alpha = torch.ones((self.n_batch, 1))
-        line_search_done = self.terminated.clone()
+        dones = self.terminated.clone()
         i = 0
-        while (not torch.all(line_search_done)) and (i < max_iter):
-            # print("Line search iter: ", i)
+        while (not torch.all(dones)) and (i < max_iter):
             i += 1
             gamma = torch.zeros((self.n_batch, 1))
 
@@ -60,39 +109,34 @@ class Ssqp:
             )
             cost, gamma, uact = self.calc_metrics(x_cand, u_cand)
 
-            # Update successful batches
+            # Update successful environments
             cost_improved = cost < self.best_cost
             gamma_improved = gamma < self.best_gamma
             uact_improved = uact < self.best_uact
             # update_mask = (
             #     cost_improved | gamma_improved | uact_improved
-            # ) & ~line_search_done
-            update_mask = (cost_improved | gamma_improved) & ~line_search_done
+            # ) & line_search_done
+            update_mask = (cost_improved | gamma_improved) & ~dones
             if update_mask.any():
                 for k in range(self.horizon - 1):
                     self.prob.states[k][update_mask] = x_cand[k][update_mask]
                     self.prob.controls[k][update_mask] = u_cand[k][update_mask]
                 self.prob.states[-1][update_mask] = x_cand[-1][update_mask]
-                # Mark batches as finished
-                line_search_done[update_mask] = True
+                # Mark environments as finished
+                dones[update_mask] = True
 
             # Update best cost and gamma
-            self.best_cost[cost_improved & ~line_search_done] = cost[
-                cost_improved & ~line_search_done
-            ]
-            self.best_gamma[gamma_improved & ~line_search_done] = gamma[
-                gamma_improved & ~line_search_done
-            ]
-            self.best_uact[uact_improved & ~line_search_done] = uact[
-                uact_improved & ~line_search_done
-            ]
+            self.best_cost[cost_improved & ~dones] = cost[cost_improved & ~dones]
+            self.best_gamma[gamma_improved & ~dones] = gamma[gamma_improved & ~dones]
+            self.best_uact[uact_improved & ~dones] = uact[uact_improved & ~dones]
 
-            # Update alpha for failed batches
-            failed_mask = ~update_mask & ~line_search_done
+            # Update alpha for failed environments
+            failed_mask = ~update_mask & ~dones
             if failed_mask.any():
                 alpha[failed_mask] *= 0.5
-        if not torch.all(line_search_done):
-            print("Line search failed: ", line_search_done)
+        # if not torch.all(dones):
+        #     print("Line search failed: ", dones)
+        return alpha, dones
 
     def check_termination(self):
         ## Lagrangian Gradient ##
@@ -127,14 +171,14 @@ class Ssqp:
 
         # terminate_Lx = max_Lx < self.eps
         # terminate_Lu = max_Lu < self.eps
-        print(
-            "Terminated environments: ",
-            self.terminated,
-            "max_dyn_viols: ",
-            max_dyn_viols,
-            "max_uact_viols: ",
-            max_uact_viols,
-        )
+        # print(
+        #     "Terminated environments: ",
+        #     self.terminated,
+        #     "max_dyn_viols: ",
+        #     max_dyn_viols,
+        #     "max_uact_viols: ",
+        #     max_uact_viols,
+        # )
         terminate_dyn_viols = max_dyn_viols < self.eps
         terminate_uact_viols = max_uact_viols < self.eps
 
@@ -180,7 +224,6 @@ class Ssqp:
         return x_next - f(x, u, self.prob.dt)
 
     def calc_underactuation_violation(self, g, x, u):
-        # print("g(x , u) = ", g(x, u)[0])
         return g(x, u)
 
     # Calculate Lagrangian gradients

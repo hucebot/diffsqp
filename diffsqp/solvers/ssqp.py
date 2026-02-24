@@ -233,17 +233,14 @@ class Ssqp:
         for k in range(self.horizon - 1):
             x = self.prob.states[k]
             u = self.prob.controls[k]
-            lagr = self.prob.costates[k + 1]
+            pi = self.pi[k]
+            lam = self.lam[k]
             lx = self.prob.costs[k].lx
             lu = self.prob.costs[k].lu
             fx = self.prob.stage_dynamics[k].fx
             fu = self.prob.stage_dynamics[k].fu
-            Lx += lx(x, u) + mm(
-                torch.transpose(fx(x, u, dt), 1, 2), lagr.unsqueeze(2)
-            ).squeeze(2)
-            Lu += lu(x, u) + mm(
-                torch.transpose(fu(x, u, dt), 1, 2), lagr.unsqueeze(2)
-            ).squeeze(2)
+            Lx += lx(x, u) + mv(torch.transpose(fx(x, u, dt), 1, 2), pi)
+            Lu += lu(x, u) + mv(torch.transpose(fu(x, u, dt), 1, 2), pi)
         # Add final node cost
         x_N = self.prob.states[-1]
         lx_N = self.prob.costs[-1].lx

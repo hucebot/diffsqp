@@ -15,6 +15,9 @@ class Lqr:
         self.K = [None] * (self.horizon - 1)
         self.k = [None] * (self.horizon - 1)
 
+        self.K_lam = [None] * (self.horizon - 1)
+        self.k_lam = [None] * (self.horizon - 1)
+
         self.V = [None] * self.horizon
         self.v = [None] * self.horizon
 
@@ -47,7 +50,14 @@ class Lqr:
                 x_lin, u_lin, x_next, self.prob.stage_dynamics[i]
             )
 
-            (self.K[i], self.k[i], self.V[i], self.v[i]) = self.riccati_backward_(
+            (
+                self.K[i],
+                self.k[i],
+                self.V[i],
+                self.v[i],
+                self.K_lam[i],
+                self.k_lam[i],
+            ) = self.riccati_backward_(
                 Q=Q,
                 q=q,
                 R=R,
@@ -75,11 +85,17 @@ class Lqr:
             Dx0 = self.Dx[i]
             K = self.K[i]
             k = self.k[i]
+            K_lam = self.K_lam[i]
+            k_lam = self.k_lam[i]
+            V = self.V[i + 1]
+            v = self.v[i + 1]
             A, B, b, C, D, e = self.calc_linearized_dynamic_terms_(
                 x_lin, u_lin, x_next, self.prob.stage_dynamics[i]
             )
-            self.Dx[i + 1], self.Du[i] = self.riccati_forward_(
-                Dx0=Dx0, K=K, k=k, A=A, B=B, b=b
+            self.Dx[i + 1], self.Du[i], self.Dpi[i], self.Dlam[i] = (
+                self.riccati_forward_(
+                    Dx0=Dx0, K=K, k=k, A=A, B=B, b=b, K_lam=K_lam, k_lam=k_lam, V=V, v=v
+                )
             )
 
             # print("Cx + Du + e = ", (mv(C, self.Dx[i]) + mv(D, self.Du[i]) + e)[0, 0])
@@ -105,6 +121,8 @@ class Lqr:
 
         K_ = None
         k_ = None
+        K_lam = None
+        k_lam = None
         V_ = None
         v_ = None
         if C is None:
@@ -135,6 +153,9 @@ class Lqr:
             K_ = K_ext[:, 0:nu, :]
             k_ = k_ext[:, 0:nu]
 
+            K_lam = K_ext[:, nu:, :]
+            k_lam = k_ext[:, nu:]
+
             V_ = Q_ + mm(S_extT, K_ext)
             v_ = q_ + mv(S_extT, k_ext)
 
@@ -150,12 +171,19 @@ class Lqr:
         assert k_.shape == torch.Size([nB, nu])
         assert V_.shape == torch.Size([nB, nx, nx])
         assert v_.shape == torch.Size([nB, nx])
+        if K_lam is not None:
+            assert K_lam.shape == torch.Size([nB, ng, nx])
+            assert k_lam.shape == torch.Size([nB, ng])
 
-        return K_, k_, V_, v_
+        return K_, k_, V_, v_, K_lam, k_lam
 
-    def riccati_forward_(self, Dx0, K, k, A, B, b):
+    def riccati_forward_(self, Dx0, K, k, A, B, b, K_lam, k_lam, V, v):
         Du = mv(K, Dx0) + k
         Dx = mv(A, Dx0) + mv(B, Du) + b
+        Dpi = mv(V, Dx) + v
+        Dlam = None
+        if K_lam is not None:
+            Dlam = mv(K_lam, Dx0) + k_lam
 
         # Sanity checks
         nB = self.n_batch
@@ -164,7 +192,7 @@ class Lqr:
         assert Dx.shape == torch.Size([nB, nx])
         assert Du.shape == torch.Size([nB, nu])
 
-        return Dx, Du
+        return Dx, Du, Dpi, Dlam
 
     def calc_linearized_cost_terms_(self, x_lin, u_lin, c):
         Q = c.lxx(x_lin, u_lin)

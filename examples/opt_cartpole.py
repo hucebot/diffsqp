@@ -13,8 +13,8 @@ from diffsqp.utils.animate import CartPoleAnimator
 # torch.set_default_dtype(torch.double)
 # torch.set_default_device("cuda")
 
-# dyn = CartPoleDynamics(mc=0.5, mp=0.3, lp=0.2, grav=9.81)
-dyn = CartPoleInverseDynamics(mc=0.5, mp=0.3, lp=0.2, grav=9.81)
+dyn = CartPoleDynamics(mc=0.5, mp=0.3, lp=0.2, grav=9.81)
+# dyn = CartPoleInverseDynamics(mc=0.5, mp=0.3, lp=0.2, grav=9.81)
 
 dt = 0.01
 tf = 1.0
@@ -23,15 +23,15 @@ n_batch = 4
 n_state = dyn.nx
 n_ctrl = dyn.nu
 
-x_init = torch.tensor(
-    [
-        [0.0, 0.0, 0.0, 0.0],
-        [0.1, torch.pi, 0.0, 0.0],
-        [-0.1, torch.pi, 0.0, 0.0],
-        [-4.6296e-02, 2.8597e00, 2.8562e-01, 2.3995e00],
-    ]
-)
-# x_init = torch.tensor([0.0, 0.0, 0.0, 0.0]).repeat(n_batch, 1)
+# x_init = torch.tensor(
+#     [
+#         [0.0, 0.0, 0.0, 0.0],
+#         [0.1, torch.pi, 0.0, 0.0],
+#         [-0.1, torch.pi, 0.0, 0.0],
+#         [-4.6296e-02, 2.8597e00, 2.8562e-01, 2.3995e00],
+#     ]
+# )
+x_init = 0.1 * torch.randn((n_batch, n_state))
 x_des = torch.tensor([0.0, torch.pi, 0.0, 0.0]).repeat(n_batch, 1)
 
 prob = Problem(horizon, dt, n_state, n_ctrl)

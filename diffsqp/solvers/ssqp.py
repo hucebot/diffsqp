@@ -48,8 +48,6 @@ class Ssqp:
         # Solve for max_iter steps
 
         print("####### SSQP Solver ########")
-        print("############################")
-        print("############################")
         t_solve_start = time.time()
         for iter in range(max_iter):
 
@@ -58,10 +56,11 @@ class Ssqp:
 
             # cursor up one line
             # delete last line
-            sys.stdout.write("\x1b[1A")
-            sys.stdout.write("\x1b[2K")
-            sys.stdout.write("\x1b[1A")
-            sys.stdout.write("\x1b[2K")
+            if iter > 0:
+                sys.stdout.write("\x1b[1A")
+                sys.stdout.write("\x1b[2K")
+                sys.stdout.write("\x1b[1A")
+                sys.stdout.write("\x1b[2K")
             print("SSQP Iteration: ", iter + 1)
             print(
                 "Terminated Environments: ",

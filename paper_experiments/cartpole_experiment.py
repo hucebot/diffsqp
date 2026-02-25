@@ -14,7 +14,7 @@ def main(args):
     torch.set_default_device(args.dev)
 
     if args.qp == "qpth":
-        # QPTH required double precision
+        # QPTH requires double precision
         torch.set_default_dtype(torch.double)
 
     if args.model == "forward":

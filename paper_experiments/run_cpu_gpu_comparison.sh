@@ -26,8 +26,13 @@ for dev in $devices; do
         for size in $batch_sizes; do
             mkdir -p "${size}_envs"/
             cd "${size}_envs"/
-            rm -rf *
-            uv run "${cwd}/cartpole_experiment.py" -nb ${size} -model ${dyn} -qp lqr -dev ${dev} -task swingup -std ${STD}
+            for i in $(seq 1 $N_RUNS); do
+                mkdir -p "run_$i"/
+                cd "run_$i"/
+                rm -rf *
+                uv run "${cwd}/cartpole_experiment.py" -nb ${size} -model ${dyn} -qp lqr -dev ${dev} -task swingup -std ${STD}
+                cd ../
+            done
             cd ../
         done
         cd ../

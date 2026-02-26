@@ -3,7 +3,11 @@ import torch
 
 from diffsqp.problems import Problem
 from diffsqp.costs import LqrCost, TerminalCost
-from diffsqp.dynamics import CartPoleDynamics, CartPoleInverseDynamics
+from diffsqp.dynamics import (
+    CartPoleDynamics,
+    CartPoleInverseDynamics,
+    CartPoleInverseDynamicsConstrained,
+)
 from diffsqp.solvers import Lqr
 from diffsqp.solvers import Admm
 from diffsqp.solvers import Ssqp
@@ -13,13 +17,17 @@ from diffsqp.utils.animate import CartPoleAnimator
 # torch.set_default_dtype(torch.double)
 # torch.set_default_device("cuda")
 
-dyn = CartPoleDynamics(mc=0.5, mp=0.3, lp=0.2, grav=9.81)
-# dyn = CartPoleInverseDynamics(mc=0.5, mp=0.3, lp=0.2, grav=9.81)
+# dyn = CartPoleDynamics(mc=0.5, mp=0.3, lp=0.2, grav=9.81)
+dyn = CartPoleInverseDynamics(mc=0.5, mp=0.3, lp=0.2, grav=9.81)
+# dyn = CartPoleInverseDynamicsConstrained(mc=0.5, mp=0.3, lp=0.2, grav=9.81)
+dyn_c = CartPoleInverseDynamicsConstrained(
+    mc=0.5, mp=0.3, lp=0.2, constr_u=True, grav=9.81
+)
 
 dt = 0.01
 tf = 1.0
 horizon = int(tf / dt)
-n_batch = 4
+n_batch = 2
 n_state = dyn.nx
 n_ctrl = dyn.nu
 
@@ -45,7 +53,11 @@ for i in range(horizon - 1):
     prob.states.append(x_init.clone())
     prob.controls.append(torch.zeros((n_batch, n_ctrl)))
     prob.costs.append(LqrCost(Q, R))
-    prob.stage_dynamics.append(dyn)
+    if i == int(horizon / 2):
+        prob.stage_dynamics.append(dyn_c)
+    else:
+        prob.stage_dynamics.append(dyn)
+
 # Set terminal cost
 # prob.states.append(torch.zeros((n_batch, n_state)))
 prob.states.append(x_des)
@@ -57,7 +69,11 @@ solver = Ssqp(prob, qp_solver)
 
 start = time.time()
 
-solver.solve()
+info = solver.solve()
+print("max_c_viol: ", info["max_uact_viol"])
+print("u_k-1: ", prob.controls[int(horizon / 2) - 1][0])
+print("u-k: ", prob.controls[int(horizon / 2)][0])
+print("u-k+1: ", prob.controls[int(horizon / 2) + 1][0])
 
 end = time.time()
 print("Time elapsed: ", end - start, " s.")

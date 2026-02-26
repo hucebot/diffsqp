@@ -2,6 +2,8 @@ import torch
 from diffsqp.dynamics import (
     Dynamics,
     CartPoleInverseDynamics,
+    CartPoleInverseDynamicsConstrained,
+    AcrobotInverseDynamics,
 )
 
 
@@ -58,7 +60,7 @@ def test_dynamics_derivatives(
     assert gu_analytic.shape == (n_batch, dyn.ng, dyn.nu)
 
     # 4. Compare derivatives
-    # torch.set_printoptions(2)
+    torch.set_printoptions(2)
     assert torch.allclose(fx_analytic, fx_numeric, atol=1e-6)
     assert torch.allclose(fu_analytic, fu_numeric, atol=1e-6)
     assert torch.allclose(gx_analytic, gx_numeric, atol=1e-6)
@@ -70,7 +72,11 @@ def test_dynamics_derivatives(
 if __name__ == "__main__":
     n_batch = 3
     dt = 0.01
-    dyn = CartPoleInverseDynamics(mc=1.0, mp=1.0, lp=1.0, grav=9.81)
+    # dyn = CartPoleInverseDynamics(mc=1.0, mp=1.0, lp=1.0, grav=9.81)
+    # dyn = AcrobotInverseDynamics(m1=0.1, m2=0.1, l1=0.3, l2=0.3)
+    dyn = CartPoleInverseDynamicsConstrained(
+        mc=1.0, mp=1.0, lp=1.0, constr_u=True, grav=9.81
+    )
 
     x = torch.randn(n_batch, dyn.nx, requires_grad=True)
     u = torch.randn(n_batch, dyn.nu, requires_grad=True)

@@ -3,6 +3,7 @@ from diffsqp.dynamics import (
     Dynamics,
     PendulumDynamics,
     CartPoleDynamics,
+    AcrobotDynamics,
 )
 
 
@@ -53,6 +54,7 @@ if __name__ == "__main__":
     dt = 0.01
     # dyn = PendulumDynamics(m=1.0, l=1.0, b=0.1)
     dyn = CartPoleDynamics(mc=1.0, mp=1.0, lp=1.0, grav=9.81)
+    # dyn = AcrobotDynamics(m1=0.1, m2=0.1, l1=0.3, l2=0.3)
 
     x = torch.randn(n_batch, dyn.nx, requires_grad=True)
     u = torch.randn(n_batch, dyn.nu, requires_grad=True)

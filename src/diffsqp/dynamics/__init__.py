@@ -1,4 +1,7 @@
 from .base_dynamics import Dynamics
 from .pendulum_dynamics import PendulumDynamics
 from .cartpole_dynamics import CartPoleDynamics
+from .acrobot_forward import AcrobotDynamics
 from .cartpole_inverse import CartPoleInverseDynamics
+from .cartpole_inverse_constrained import CartPoleInverseDynamicsConstrained
+from .acrobot_inverse import AcrobotInverseDynamics

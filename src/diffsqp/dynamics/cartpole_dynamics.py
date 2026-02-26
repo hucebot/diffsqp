@@ -32,7 +32,7 @@ class CartPoleDynamics(Dynamics):
         fx = u[:, 0:1]
 
         dds = (fx + mp * sin(th) * (lp * dth**2 + grav * cos(th))) / (
-            mc + mp * (sin(th) ** 2)
+            mc + mp * sin(th) ** 2
         )
 
         ddth = (

@@ -110,3 +110,108 @@ class CartPoleAnimator:
 
         ani.save(filename, writer=writer)
         print("Save complete.")
+
+
+class AcrobotAnimator:
+    def __init__(self, states, l1, l2, dt, n_batch):
+        """
+        states: Array of shape [time, n_batch, 4]
+                where indices 0 and 1 are theta1 and theta2.
+        l1, l2: Lengths of the two links.
+        dt: Time step.
+        n_batch: Number of parallel simulations to show.
+        """
+        self.states = states
+        self.l1 = l1
+        self.l2 = l2
+        self.dt = dt
+        self.n_batch = n_batch
+
+        # Setup Figure
+        self.fig, self.axs = plt.subplots(
+            n_batch, 1, figsize=(6, 6 * n_batch), sharex=True
+        )
+        if n_batch == 1:
+            self.axs = [self.axs]
+
+        self.lines = []
+        colors = list(mcolors.TABLEAU_COLORS.values())
+
+        # Total length for axis scaling
+        L_total = (l1 + l2) * 1.1
+
+        for i in range(n_batch):
+            ax = self.axs[i]
+            color = colors[i % len(colors)]
+
+            ax.set_aspect("equal")
+            ax.set_xlim(-L_total, L_total)
+            ax.set_ylim(-L_total, L_total)
+            ax.grid(True)
+            ax.set_title(f"Acrobot Batch {i}")
+
+            # 'o-' creates a line with circular markers at the joints
+            (line,) = ax.plot(
+                [],
+                [],
+                "o-",
+                lw=3,
+                color=color,
+                markersize=10,
+                markerfacecolor="black",
+                markeredgecolor="black",
+            )
+            self.lines.append(line)
+
+    def _init(self):
+        for line in self.lines:
+            line.set_data([], [])
+        return self.lines
+
+    def _update(self, frame):
+        for i in range(self.n_batch):
+            # Acrobot states are usually: [theta1, theta2, dtheta1, dtheta2]
+            th1 = self.states[frame, i, 0]
+            th2 = self.states[frame, i, 1]
+
+            # Elbow position (End of link 1)
+            # Note: We use sin/cos based on standard vertical downward = 0
+            # or horizontal = 0. Standard Acrobot: 0 is pointing down.
+            x1 = self.l1 * np.sin(th1)
+            y1 = -self.l1 * np.cos(th1)
+
+            # Wrist position (End of link 2)
+            # theta2 is usually relative to theta1 in Acrobot dynamics
+            x2 = x1 + self.l2 * np.sin(th1 + th2)
+            y2 = y1 - self.l2 * np.cos(th1 + th2)
+
+            self.lines[i].set_data([0, x1, x2], [0, y1, y2])
+
+        return self.lines
+
+    def animate(self, step_size=1):
+        ani = animation.FuncAnimation(
+            self.fig,
+            self._update,
+            frames=range(0, len(self.states), step_size),
+            init_func=self._init,
+            blit=True,
+            interval=self.dt * step_size * 1000,
+            repeat=True,
+        )
+        plt.tight_layout()
+        plt.show()
+
+    def save(self, filename="acrobot_sim.mp4", step_size=1, fps=30):
+        print(f"Saving animation to {filename}...")
+        writer = animation.FFMpegWriter(fps=fps, bitrate=1800)
+
+        ani = animation.FuncAnimation(
+            self.fig,
+            self._update,
+            frames=range(0, len(self.states), step_size),
+            init_func=self._init,
+            blit=True,
+        )
+        ani.save(filename, writer=writer)
+        print("Save complete.")

@@ -1,12 +1,12 @@
 #! /bin/bash
 
 # Number of executions for each experiment
-N_RUNS=10
-STD=0.05
+N_RUNS=1
+STD=0.01
 
 devices="cpu cuda"
 dynamics="forward inverse"
-batch_sizes="1 8 32 128 512 2048 8192"
+batch_sizes="128 512 2048 8192 16384"
 
 # Save current directory path
 cwd=$(pwd)

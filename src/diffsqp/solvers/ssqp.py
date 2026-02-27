@@ -40,6 +40,7 @@ class Ssqp:
             "cuda_allocated_bytes": 0,
             "t_qp_solve": [0.0] * self.max_iter,
             "t_line_search": [0.0] * self.max_iter,
+            "line_search_iters": [0.0] * self.max_iter,
             "max_dyn_viol": 0.0,
             "max_uact_viol": 0.0,
         }
@@ -52,30 +53,39 @@ class Ssqp:
         for iter in range(max_iter):
 
             # Step solver
-            t_qp_solve, t_line_search, alpha, dones = self.step()
+            t_qp_solve, t_line_search, ls_iters, alpha, dones = self.step()
 
             # cursor up one line
             # delete last line
-            if iter > 0:
-                sys.stdout.write("\x1b[1A")
-                sys.stdout.write("\x1b[2K")
-                sys.stdout.write("\x1b[1A")
-                sys.stdout.write("\x1b[2K")
-            print("SSQP Iteration: ", iter + 1)
-            print(
-                "Terminated Environments: ",
-                torch.count_nonzero(self.terminated).item(),
-                "/",
-                self.terminated.shape[0],
-            )
+            # if iter > 0:
+            #     sys.stdout.write("\x1b[1A")
+            #     sys.stdout.write("\x1b[2K")
+            #     sys.stdout.write("\x1b[1A")
+            #     sys.stdout.write("\x1b[2K")
+            # print("SSQP Iteration: ", iter + 1)
+            # print(
+            #     "Terminated Environments: ",
+            #     torch.count_nonzero(self.terminated).item(),
+            #     "/",
+            #     self.terminated.shape[0],
+            # )
 
             self.log["t_qp_solve"][iter] = t_qp_solve
             self.log["t_line_search"][iter] = t_line_search
+            self.log["line_search_iters"][iter] = ls_iters
 
             # Check for terminations
             if torch.all(self.terminated):
                 break
         t_solve_end = time.time()
+        print("SSQP Total Iterations: ", iter + 1)
+        print(
+            "Terminated Environments: ",
+            torch.count_nonzero(self.terminated).item(),
+            "/",
+            self.terminated.shape[0],
+        )
+        print("Solution time: ", t_solve_end - t_solve_start)
 
         # Fill log
         self.log["t_solve_s"] = t_solve_end - t_solve_start
@@ -90,13 +100,13 @@ class Ssqp:
         delta_x, delta_u, delta_pi, delta_lam, t_qp_solve = self.admm_solver.solve()
 
         start = time.time()
-        alpha, dones = self.line_search(delta_x, delta_u)
+        alpha, dones, ls_iters = self.line_search(delta_x, delta_u)
         end = time.time()
         t_line_search = end - start
 
         self.check_termination()
 
-        return t_qp_solve, t_line_search, alpha, dones
+        return t_qp_solve, t_line_search, ls_iters, alpha, dones
 
     def line_search(self, delta_x, delta_u, max_iter: float = 10):
         alpha = torch.ones((self.n_batch, 1))
@@ -143,7 +153,7 @@ class Ssqp:
                 alpha[failed_mask] *= 0.5
         # if not torch.all(dones):
         #     print("Line search failed: ", dones)
-        return alpha, dones
+        return alpha, dones, i
 
     def check_termination(self):
         ## Lagrangian Gradient ##

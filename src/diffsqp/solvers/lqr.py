@@ -12,6 +12,10 @@ class Lqr:
         self.n_state = self.prob.n_state
         self.n_ctrl = self.prob.n_ctrl
 
+        self.A = [None] * (self.horizon - 1)
+        self.B = [None] * (self.horizon - 1)
+        self.b = [None] * (self.horizon - 1)
+
         self.K = [None] * (self.horizon - 1)
         self.k = [None] * (self.horizon - 1)
 
@@ -46,8 +50,10 @@ class Lqr:
             Q, R, S, q, r = self.calc_linearized_cost_terms_(
                 x_lin, u_lin, self.prob.costs[i]
             )
-            A, B, b, C, D, e = self.calc_linearized_dynamic_terms_(
-                x_lin, u_lin, x_next, self.prob.stage_dynamics[i]
+            (self.A[i], self.B[i], self.b[i], C, D, e) = (
+                self.calc_linearized_dynamic_terms_(
+                    x_lin, u_lin, x_next, self.prob.stage_dynamics[i]
+                )
             )
 
             (
@@ -65,9 +71,9 @@ class Lqr:
                 S=S,
                 V=self.V[i + 1],
                 v=self.v[i + 1],
-                A=A,
-                B=B,
-                b=b,
+                A=self.A[i],
+                B=self.B[i],
+                b=self.b[i],
                 C=C,
                 D=D,
                 e=e,
@@ -89,9 +95,11 @@ class Lqr:
             k_lam = self.k_lam[i]
             V = self.V[i + 1]
             v = self.v[i + 1]
-            A, B, b, C, D, e = self.calc_linearized_dynamic_terms_(
-                x_lin, u_lin, x_next, self.prob.stage_dynamics[i]
-            )
+
+            A = self.A[i]
+            B = self.B[i]
+            b = self.b[i]
+
             self.Dx[i + 1], self.Du[i], self.Dpi[i], self.Dlam[i] = (
                 self.riccati_forward_(
                     Dx0=Dx0, K=K, k=k, A=A, B=B, b=b, K_lam=K_lam, k_lam=k_lam, V=V, v=v

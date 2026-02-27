@@ -13,14 +13,6 @@ default_parameters: Dict[str, Any] = {
     "names_controls": ["force"],
 }
 
-default_state_dot_parameters: Dict[str, Any] = {
-    # Physical parameters
-    "masscart": 0.5,
-    "masspole": 0.3,
-    "length": 0.2,  # half pole length (distance to center of mass)
-    "gravity": 9.81,
-}
-
 
 class CartpoleDynamics(Dynamics):
     """
@@ -37,7 +29,7 @@ class CartpoleDynamics(Dynamics):
         self,
         state: jnp.array,
         control: jnp.array,
-        params: Dict[str, Any] = default_state_dot_parameters,
+        params: Dict[str, Any],
     ) -> jnp.array:
         """
         Computes the time derivative of the state of the system.
@@ -59,13 +51,10 @@ class CartpoleDynamics(Dynamics):
         x, x_dot, theta, theta_dot = state
         force = control[0]
 
-        m_c = params.get("masscart", 1.0)
-        m_p = params.get("masspole", 0.1)
-        length = params.get("length", 0.5)
-        g = params.get("gravity", 9.81)
-
-        total_mass = m_c + m_p
-        polemass_length = m_p * length
+        m_c = params["masscart"]
+        m_p = params["masspole"]
+        length = params["length"]
+        g = params["gravity"]
 
         sin_t = jnp.sin(theta)
         cos_t = jnp.cos(theta)

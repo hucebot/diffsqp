@@ -45,12 +45,12 @@ class Ssqp:
             "max_uact_viol": 0.0,
         }
 
-    def solve(self, max_iter=100):
+    def solve(self):
         # Solve for max_iter steps
 
         print("####### SSQP Solver ########")
         t_solve_start = time.time()
-        for iter in range(max_iter):
+        for iter in range(self.max_iter):
 
             # Step solver
             t_qp_solve, t_line_search, ls_iters, alpha, dones = self.step()
@@ -104,7 +104,7 @@ class Ssqp:
         end = time.time()
         t_line_search = end - start
 
-        self.check_termination()
+        self.check_termination(delta_x, delta_u)
 
         return t_qp_solve, t_line_search, ls_iters, alpha, dones
 
@@ -133,7 +133,14 @@ class Ssqp:
             # update_mask = (
             #     cost_improved | gamma_improved | uact_improved
             # ) & line_search_done
-            update_mask = (cost_improved | gamma_improved) & ~dones
+            update_mask = (cost_improved | gamma_improved | uact_improved) & ~dones
+
+            # Merit Function
+            # merit = cost + self.beta * gamma + self.beta * uact
+            # merit_improved = merit < self.best_merit
+            # update_mask = merit_improved & ~dones
+            # print(merit_improved)
+
             if update_mask.any():
                 for k in range(self.horizon - 1):
                     self.prob.states[k][update_mask] = x_cand[k][update_mask]
@@ -155,11 +162,30 @@ class Ssqp:
         #     print("Line search failed: ", dones)
         return alpha, dones, i
 
-    def check_termination(self):
+    def check_termination(self, delta_x, delta_u):
         ## Lagrangian Gradient ##
         # Lx, Lu = self.calc_Lx_Lu()
         # max_Lx = torch.norm(Lx, p=float("inf"), dim=1)
         # max_Lu = torch.norm(Lx, p=float("inf"), dim=1)
+
+        max = torch.zeros(self.n_batch)
+        for i in range(len(delta_u)):
+            # cand = torch.max(torch.square(dx), dim=1).values
+            dx = delta_x[i]
+            du = delta_u[i]
+            res = torch.max(
+                mm(dx.unsqueeze(2).transpose(1, 2), dx.unsqueeze(2)).squeeze(2)
+                + mm(du.unsqueeze(2).transpose(1, 2), du.unsqueeze(2)).squeeze(2),
+                dim=1,
+            ).values
+            max[res > max] = res[res > max]
+        dx = delta_x[i]
+        du = delta_u[i]
+        res = torch.max(
+            mm(dx.unsqueeze(2).transpose(1, 2), dx.unsqueeze(2)).squeeze(2), dim=1
+        ).values
+        max[res > max] = res[res > max]
+        dx_crit = max < self.eps
 
         ## Dynamics Violation ##
         # Track largest violation for each batch
@@ -185,6 +211,7 @@ class Ssqp:
 
         # terminate_Lx = max_Lx < self.eps
         # terminate_Lu = max_Lu < self.eps
+        # print("Max dyn viols: ", max_dyn_viols, ", ", max_uact_viols)
         self.log["max_dyn_viol"] = torch.norm(max_dyn_viols, p=float("inf")).item()
         self.log["max_uact_viol"] = torch.norm(max_uact_viols, p=float("inf")).item()
         terminate_dyn_viols = max_dyn_viols < self.eps
@@ -192,6 +219,7 @@ class Ssqp:
 
         # self.terminated = torch.logical_or(terminate_Lx, terminate_Lu)
         self.terminated = torch.logical_and(terminate_dyn_viols, terminate_uact_viols)
+        self.terminated = torch.logical_and(self.terminated, dx_crit)
 
     def calc_cadidate_solutions(self, alpha, curr_x, curr_u, delta_x, delta_u):
         x_cand = []

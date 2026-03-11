@@ -9,10 +9,11 @@ from diffsqp.solvers import Admm
 
 class Ssqp:
     def __init__(
-        self, prob: Problem, qp_solver, max_iter=100, eps: float = 1e-4
+        self, prob: Problem, qp_solver, max_iter=100, eps: float = 1e-4, eps_dx=1e-2
     ) -> None:
         self.max_iter = max_iter
         self.eps = eps
+        self.eps_dx = eps_dx
 
         self.prob = prob
         self.horizon = self.prob.horizon
@@ -185,7 +186,7 @@ class Ssqp:
             mm(dx.unsqueeze(2).transpose(1, 2), dx.unsqueeze(2)).squeeze(2), dim=1
         ).values
         max[res > max] = res[res > max]
-        dx_crit = max < self.eps
+        dx_crit = max < self.eps_dx
 
         ## Dynamics Violation ##
         # Track largest violation for each batch

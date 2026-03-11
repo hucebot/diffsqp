@@ -1,7 +1,9 @@
 import argparse
 import json
 import time
+import imageio.v3 as iio
 from pathlib import Path
+import torch
 
 import numpy as np
 import viser
@@ -22,6 +24,8 @@ def create_grid_transforms(
     positions = np.zeros((grid_size * grid_size, 3), dtype=np.float32)
     positions[:, 0] = 0.4 * xx.flatten()
     positions[:, 1] = 0.3 * yy.flatten()
+    # positions[:, 0] = 0.2 * xx.flatten()
+    # positions[:, 1] = 0.2 * yy.flatten()
     positions[:, 2] = 0.5
     positions = positions[:num_instances]
 
@@ -35,61 +39,41 @@ def create_grid_transforms(
     return positions, rotations, scales.astype(np.float32)
 
 
-def create_robot_control_sliders(
-    server: viser.ViserServer, viser_urdf: ViserUrdf
-) -> tuple[list[viser.GuiInputHandle[float]], list[float]]:
-    """Create slider for each joint of the robot. We also update robot model
-    when slider moves."""
-    slider_handles: list[viser.GuiInputHandle[float]] = []
-    initial_config: list[float] = []
-    for joint_name, (
-        lower,
-        upper,
-    ) in viser_urdf.get_actuated_joint_limits().items():
-        lower = lower if lower is not None else -np.pi
-        upper = upper if upper is not None else np.pi
-        initial_pos = 0.0 if lower < -0.1 and upper > 0.1 else (lower + upper) / 2.0
-        slider = server.gui.add_slider(
-            label=joint_name,
-            min=lower,
-            max=upper,
-            step=1e-3,
-            initial_value=initial_pos,
-        )
-        slider.on_update(  # When sliders move, we update the URDF configuration.
-            lambda _: viser_urdf.update_cfg(
-                np.array([slider.value for slider in slider_handles])
-            )
-        )
-        slider_handles.append(slider)
-        initial_config.append(initial_pos)
-    return slider_handles, initial_config
-
-
-def main():
+def main(args):
     server = viser.ViserServer()
-    server.gui.configure_theme(dark_mode=True)
+    # server.gui.configure_theme(dark_mode=True)
 
     RESOURCES = Path(__file__).resolve().parent
     URDF_DIR = RESOURCES / "robots"
 
-    urdf_path = URDF_DIR / "cartpole.urdf"
+    urdf_path = None
+    if args.robot == "cartpole":
+        urdf_path = URDF_DIR / "cartpole.urdf"
+    elif args.robot == "acrobot":
+        urdf_path = URDF_DIR / "acrobot.urdf"
+    else:
+        exit("ERROR: Robot ", args.robot, " unsupported!")
 
-    n_robots = 64
+    n_robots = args.n_robots
+    states = torch.load(args.file)
+    horizon = len(states)
+
+    server.initial_camera.position = (-0.5, 2.0, 1.5)
+    server.initial_camera.look_at = (0.0, 0.0, 0.0)
 
     print("Open your browser to http://localhost:8080")
     print("Press Ctrl+C to exit")
 
     # Scene decoration
     # server.scene.world_axes.visible = True
-    # server.scene.add_grid(
-    #     "/floor",
-    #     width=6.0,
-    #     height=6.0,
-    #     plane="xy",
-    #     cell_size=0.25,
-    #     section_size=1.0,
-    # )
+    server.scene.add_grid(
+        "/floor",
+        width=6.0,
+        height=6.0,
+        plane="xy",
+        cell_size=0.25,
+        section_size=1.0,
+    )
 
     pos, rot, scales = create_grid_transforms(n_robots)
     bases = []
@@ -104,31 +88,44 @@ def main():
         bases.append(robot_base)
         robots.append(viser_robot)
 
-    # with server.gui.add_folder("Joint position control"):
-    #     (slider_handles, initial_config) = create_robot_control_sliders(
-    #         server, robots[0]
-    #     )
-    #
-    # with server.gui.add_folder("Select urdf"):
-    #     urdf_dropdown = server.gui.add_dropdown(
-    #         "URDF",
-    #         options=[urdf_path.name],
-    #         initial_value=urdf_path.name,
-    #     )
+    button = server.gui.add_button("Play and render a video")
+
+    @button.on_click
+    def _(event: viser.GuiEvent) -> None:
+        client = event.client
+        assert client is not None
+        client.scene.reset()
+        images = []
+        t = 0
+        while True:
+            x = states[t][:, 0:2].numpy()
+            for i in range(args.n_robots):
+                robots[i].update_cfg(x[i])
+            # Propagate time
+            images.append(client.get_render(height=1080, width=1920))
+            t += 1
+            if t == len(states):
+                t = 0
+                # time.sleep(1.0)
+                images.append(client.get_render(height=1080, width=1920))
+                print("Hi")
+                break
+            # time.sleep(0.01)
+
+        print("Generating and sending GIF...")
+        client.send_file_download(
+            "image.gif", iio.imwrite("<bytes>", images, extension=".gif", loop=0)
+        )
+        print("Done!")
 
     while True:
-        time.sleep(10.0)
-
-    # @joint_slider.on_update
-    # def _(_) -> None:
-    #     idx = min(frame_slider.value, state["N"] - 1)
-    #     try:
-    #         state["k"] = idx
-    #         robots[0].update_cfg(np.array(state["traj"][idx]["q"]))
-    #     except ValueError as e:
-    #         print(f"[error] update_cfg: {e}")
-    #         playing.value = False
+        time.sleep(0.01)
+        pass
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-robot", type=str, help="Robot name")
+    parser.add_argument("-n_robots", type=int, help="Number of robots to visualize")
+    parser.add_argument("-file", type=str, help="Trajectory file for playback")
+    main(parser.parse_args())

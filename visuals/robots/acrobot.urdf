@@ -1,0 +1,100 @@
+<?xml version="1.0"?>
+<robot name="acrobot">
+    <material name="PaleSlate">
+        <color rgba="0.769 0.792 0.816 1.0" />
+    </material>
+    <material name="Red">
+        <color rgba="0.769 0.271 0.212 1.0" />
+    </material>
+    <material name="GrayOlive">
+        <color rgba="0.529 0.549 0.561 1.0" />
+    </material>
+
+    <link name="base_link">
+        <visual>
+            <geometry>
+                <box size="0.015 0.015 0.015" />
+            </geometry>
+            <material name="Red"/>
+        </visual>
+    </link>
+
+    <joint name="joint1" type="revolute">
+        <parent link="base_link" />
+        <child link="joint1_sphere" />
+        <origin xyz="0 0 0" />
+        <axis xyz="1 0 0" />
+    </joint>
+
+    <link name="joint1_sphere">
+        <visual>
+            <geometry>
+                <sphere radius="0.01" />
+            </geometry>
+            <material name="PaleSlate"/>
+        </visual>
+    </link>
+
+    <joint name="joint1_link" type="fixed">
+        <parent link="joint1_sphere" />
+        <child link="link1" />
+    </joint>
+
+    <link name="link1">
+        <visual>
+            <geometry>
+                <cylinder length="0.05" radius="0.005" />
+            </geometry>
+            <origin xyz="0 0 -0.025" />
+            <material name="Red"/>
+        </visual>
+    </link>
+
+    <!-- Joint 2 -->
+    <joint name="joint2" type="revolute">
+        <parent link="link1" />
+        <child link="joint2_sphere" />
+        <origin xyz="0 0 -0.05" />
+        <axis xyz="-1 0 0" />
+    </joint>
+
+    <link name="joint2_sphere">
+        <visual>
+            <geometry>
+                <sphere radius="0.006" />
+            </geometry>
+            <material name="PaleSlate"/>
+        </visual>
+    </link>
+
+    <joint name="joint2_link" type="fixed">
+        <parent link="joint2_sphere" />
+        <child link="link2" />
+    </joint>
+
+    <!-- Link 2 -->
+    <link name="link2">
+        <visual>
+            <geometry>
+                <cylinder length="0.05" radius="0.005" />
+            </geometry>
+            <origin xyz="0 0 -0.025" />
+            <material name="Red"/>
+        </visual>
+    </link>
+
+    <joint name="tip_link" type="fixed">
+        <parent link="link2" />
+        <child link="tip" />
+        <origin xyz="0 0 -0.05" />
+    </joint>
+
+    <link name="tip">
+        <visual>
+            <geometry>
+                <sphere radius="0.006"></sphere>
+            </geometry>
+            <material name="GrayOlive"/>
+        </visual>
+    </link>
+</robot>

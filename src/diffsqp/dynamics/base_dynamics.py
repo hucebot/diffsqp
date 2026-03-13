@@ -54,9 +54,9 @@ class Dynamics:
         """
         Gradient of continuous time dynamics w.r.t x
         """
-        n_batch = x.shape[0]
+        nB = x.shape[0]
         # TODO: Remove batch dimension from grad
-        grad = torch.zeros(self.nx, self.nx).repeat(n_batch, 1, 1)
+        grad = torch.zeros(self.nx, self.nx).repeat(nB, 1, 1)
         grad[:, 0 : self.nv, self.nv :] = torch.eye(self.nv)
         return grad
 
@@ -64,9 +64,9 @@ class Dynamics:
         """
         Gradient of continuous time dynamics w.r.t u
         """
-        n_batch = x.shape[0]
+        nB = x.shape[0]
         # TODO: Remove batch dimension from grad
-        grad = torch.zeros(self.nx, self.nu).repeat(n_batch, 1, 1)
+        grad = torch.zeros(self.nx, self.nu).repeat(nB, 1, 1)
         grad[:, self.nv :, :] = torch.eye(self.nu)
         return grad
 

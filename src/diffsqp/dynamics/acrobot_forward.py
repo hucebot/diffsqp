@@ -78,7 +78,7 @@ class AcrobotDynamics(Dynamics):
         """
         dfc/dx matrix: n_x x n_x
         """
-        batch_size = x.shape[0]
+        nB = x.shape[0]
 
         m1 = self.m1
         m2 = self.m2
@@ -211,7 +211,7 @@ class AcrobotDynamics(Dynamics):
         # DDTH2_DTH2
         d_ddth2_dth2 = (d_nom1_dth2 + d_nom2_dth2) / denom
 
-        A = torch.zeros((batch_size, self.nx, self.nx), device=x.device)
+        A = torch.zeros((nB, self.nx, self.nx), device=x.device)
         A[:, 0, :] = torch.tensor([0.0, 0.0, 1.0, 0.0])
         A[:, 1, :] = torch.tensor([0.0, 0.0, 0.0, 1.0])
         A[:, 2, 0] = d_ddth1_th1.squeeze(1)
@@ -229,7 +229,7 @@ class AcrobotDynamics(Dynamics):
         """
         dfc/du matrix: n_x x n_u
         """
-        batch_size = x.shape[0]
+        nB = x.shape[0]
 
         m2 = self.m2
         l1 = self.l1
@@ -249,7 +249,7 @@ class AcrobotDynamics(Dynamics):
         d_nom2_2_tau = I1 + I2 + l1 * l1 * m2 + 2.0 * l1 * lc2 * m2 * c2
         d_ddth2_tau = d_nom2_2_tau / denom
 
-        B = torch.zeros((batch_size, self.nx, self.nu), device=x.device)
+        B = torch.zeros((nB, self.nx, self.nu), device=x.device)
         B[:, 2, :] = d_ddth1_tau
         B[:, 3, :] = d_ddth2_tau
 

@@ -40,23 +40,23 @@ dyn = AcrobotInverseDynamics(
 dt = 0.01
 tf = 1.0
 horizon = int(tf / dt)
-n_batch = 4
-n_state = dyn.nx
-n_ctrl = dyn.nu
+nB = 4
+nx = dyn.nx
+nu = dyn.nu
 
-x_init = torch.tensor([torch.pi, 0.0, 0.0, 0.0]).repeat(n_batch, 1)
-x_init[:, 0:2] += 0.2 * torch.randn((n_batch, 2))
-x_des = torch.tensor([torch.pi, 0.0, 0.0, 0.0]).repeat(n_batch, 1)
+x_init = torch.tensor([torch.pi, 0.0, 0.0, 0.0]).repeat(nB, 1)
+x_init[:, 0:2] += 0.2 * torch.randn((nB, 2))
+x_des = torch.tensor([torch.pi, 0.0, 0.0, 0.0]).repeat(nB, 1)
 
-prob = Problem(horizon, dt, n_state, n_ctrl)
+prob = Problem(horizon, dt, nx, nu)
 
 q_w = torch.tensor([1e-6, 1e-6, 1e-6, 1e-6])
 r_w = torch.tensor([1e-1])
 qf_w = torch.tensor([4e8, 4e8, 1e5, 1e5])
 
-Q = q_w * torch.eye(n_state).repeat(n_batch, 1, 1)
-R = r_w * torch.eye(n_ctrl).repeat(n_batch, 1, 1)
-Qf = qf_w * torch.eye(n_state).repeat(n_batch, 1, 1)
+Q = q_w * torch.eye(nx).repeat(nB, 1, 1)
+R = r_w * torch.eye(nu).repeat(nB, 1, 1)
+Qf = qf_w * torch.eye(nx).repeat(nB, 1, 1)
 
 # Set stage cost and constraints
 for i in range(horizon - 1):
@@ -64,10 +64,10 @@ for i in range(horizon - 1):
         prob.states.append(x_init.clone())
     else:
         prob.states.append(x_des.clone())
-    prob.controls.append(torch.zeros((n_batch, n_ctrl)))
+    prob.controls.append(torch.zeros((nB, nu)))
     prob.costs.append(LqrCost(Q, R, x_des.clone()))
     prob.stage_dynamics.append(dyn)
-# Set terminal cost prob.states.append(torch.zeros((n_batch, n_state)))
+# Set terminal cost prob.states.append(torch.zeros((nB, nx)))
 prob.states.append(x_des.clone())
 prob.costs.append(TerminalCost(Qf, x_des.clone()))
 
@@ -89,7 +89,7 @@ import matplotlib.pyplot as plt
 
 
 def plot_states(states_list):
-    # 1. Stack the list of tensors into one tensor: (horizon, n_batch, n_x)
+    # 1. Stack the list of tensors into one tensor: (horizon, nB, n_x)
     states_tensor = torch.stack(states_list)
 
     # 2. Extract the first batch (index 0) and convert to numpy
@@ -115,7 +115,7 @@ def plot_states(states_list):
 
 plot_states(prob.states)
 
-anim = AcrobotAnimator(np.array(prob.states), dyn.l1, dyn.l2, dt, n_batch)
+anim = AcrobotAnimator(np.array(prob.states), dyn.l1, dyn.l2, dt, nB)
 anim.animate(step_size=2)
 
 print(solver.terminated)

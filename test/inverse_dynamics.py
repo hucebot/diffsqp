@@ -10,7 +10,7 @@ from diffsqp.dynamics import (
 def test_dynamics_derivatives(
     dyn: Dynamics, x: torch.Tensor, u: torch.Tensor, dt: float
 ):
-    n_batch = x.shape[0]
+    nB = x.shape[0]
 
     # 1. Get analytical Jacobian
     fx_analytic = dyn.fx(x, u, dt)
@@ -37,7 +37,7 @@ def test_dynamics_derivatives(
     fu_numeric = []
     gx_numeric = []
     gu_numeric = []
-    for i in range(n_batch):
+    for i in range(nB):
         # jacobian returns (output_dim, input_dim)
         jx = torch.autograd.functional.jacobian(fx_wrapper, x)[i, :, i, :]
         ju = torch.autograd.functional.jacobian(fu_wrapper, u)[i, :, i, :]
@@ -53,11 +53,11 @@ def test_dynamics_derivatives(
     gu_numeric = torch.stack(gu_numeric)
 
     # 3. Assert dimensions
-    assert dyn.f(x, u, dt).shape == (n_batch, dyn.nx)
-    assert fx_analytic.shape == (n_batch, dyn.nx, dyn.nx)
-    assert fu_analytic.shape == (n_batch, dyn.nx, dyn.nu)
-    assert gx_analytic.shape == (n_batch, dyn.ng, dyn.nx)
-    assert gu_analytic.shape == (n_batch, dyn.ng, dyn.nu)
+    assert dyn.f(x, u, dt).shape == (nB, dyn.nx)
+    assert fx_analytic.shape == (nB, dyn.nx, dyn.nx)
+    assert fu_analytic.shape == (nB, dyn.nx, dyn.nu)
+    assert gx_analytic.shape == (nB, dyn.ng, dyn.nx)
+    assert gu_analytic.shape == (nB, dyn.ng, dyn.nu)
 
     # 4. Compare derivatives
     torch.set_printoptions(2)
@@ -70,7 +70,7 @@ def test_dynamics_derivatives(
 
 
 if __name__ == "__main__":
-    n_batch = 3
+    nB = 3
     dt = 0.01
     # dyn = CartPoleInverseDynamics(mc=1.0, mp=1.0, lp=1.0, grav=9.81)
     # dyn = AcrobotInverseDynamics(m1=0.1, m2=0.1, l1=0.3, l2=0.3)
@@ -78,7 +78,7 @@ if __name__ == "__main__":
         mc=1.0, mp=1.0, lp=1.0, constr_u=True, grav=9.81
     )
 
-    x = torch.randn(n_batch, dyn.nx, requires_grad=True)
-    u = torch.randn(n_batch, dyn.nu, requires_grad=True)
+    x = torch.randn(nB, dyn.nx, requires_grad=True)
+    u = torch.randn(nB, dyn.nu, requires_grad=True)
 
     test_dynamics_derivatives(dyn, x, u, dt)

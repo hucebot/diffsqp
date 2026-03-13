@@ -18,9 +18,9 @@ class Sqp:
         self.prob = prob
         self.horizon = self.prob.horizon
 
-        self.n_batch = self.prob.states[0].shape[0]
-        nx = self.prob.n_state
-        nu = self.prob.n_ctrl
+        self.nB = self.prob.states[0].shape[0]
+        nx = self.prob.nx
+        nu = self.prob.nu
 
         self.admm_solver = Admm(prob, qp_solver)
 
@@ -30,10 +30,10 @@ class Sqp:
             self.prob.controls,
         )
 
-        self.terminated = torch.zeros((self.n_batch), dtype=torch.bool)
+        self.terminated = torch.zeros((self.nB), dtype=torch.bool)
 
         self.log = {
-            "n_batch": self.n_batch,
+            "nB": self.nB,
             "terminated": 0,
             "ssqp_iterations": 0,
             "t_solve_s": 0.0,
@@ -110,12 +110,12 @@ class Sqp:
         return t_qp_solve, t_line_search, ls_iters, alpha, dones
 
     def line_search(self, delta_x, delta_u, max_iter: float = 10):
-        alpha = torch.ones((self.n_batch, 1))
+        alpha = torch.ones((self.nB, 1))
         dones = self.terminated.clone()
         i = 0
         while (not torch.all(dones)) and (i < max_iter):
             i += 1
-            gamma = torch.zeros((self.n_batch, 1))
+            gamma = torch.zeros((self.nB, 1))
 
             # Evaluate current alpha
             x_cand, u_cand = self.calc_cadidate_solutions(
@@ -169,7 +169,7 @@ class Sqp:
         # max_Lx = torch.norm(Lx, p=float("inf"), dim=1)
         # max_Lu = torch.norm(Lx, p=float("inf"), dim=1)
 
-        max = torch.zeros(self.n_batch)
+        max = torch.zeros(self.nB)
         for i in range(len(delta_u)):
             # cand = torch.max(torch.square(dx), dim=1).values
             dx = delta_x[i]
@@ -190,8 +190,8 @@ class Sqp:
 
         ## Dynamics Violation ##
         # Track largest violation for each batch
-        max_dyn_viols = torch.zeros(self.n_batch)
-        max_uact_viols = torch.zeros(self.n_batch)
+        max_dyn_viols = torch.zeros(self.nB)
+        max_uact_viols = torch.zeros(self.nB)
         for k in range(self.horizon - 1):
             x0 = self.prob.states[k]
             u0 = self.prob.controls[k]
@@ -232,9 +232,9 @@ class Sqp:
         return x_cand, u_cand
 
     def calc_metrics(self, x_cand, u_cand):
-        cost = torch.zeros((self.n_batch))
-        gamma = torch.zeros((self.n_batch))
-        uact = torch.zeros((self.n_batch))
+        cost = torch.zeros((self.nB))
+        gamma = torch.zeros((self.nB))
+        uact = torch.zeros((self.nB))
         for k in range(self.horizon - 1):
             # Calculate total trajectory cost
             cost += self.prob.costs[k].l(x_cand[k], u_cand[k])
@@ -266,8 +266,8 @@ class Sqp:
     # Calculate Lagrangian gradients
     def calc_Lx_Lu(self):
         dt = self.prob.dt
-        Lx = torch.zeros((self.n_batch, self.prob.n_state))
-        Lu = torch.zeros((self.n_batch, self.prob.n_ctrl))
+        Lx = torch.zeros((self.nB, self.prob.nx))
+        Lu = torch.zeros((self.nB, self.prob.nu))
         for k in range(self.horizon - 1):
             x = self.prob.states[k]
             u = self.prob.controls[k]

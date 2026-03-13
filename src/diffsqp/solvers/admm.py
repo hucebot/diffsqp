@@ -12,9 +12,9 @@ class Admm:
         self.prob = prob
         self.horizon = self.prob.horizon
 
-        n_batch = self.prob.states[0].shape[0]
-        n_state = self.prob.n_state
-        n_ctrl = self.prob.n_ctrl
+        nB = self.prob.states[0].shape[0]
+        nx = self.prob.nx
+        nu = self.prob.nu
         self.delta_x = [None] * self.prob.horizon
         self.delta_u = [None] * (self.prob.horizon - 1)
         self.delta_pi = [None] * (self.prob.horizon - 1)

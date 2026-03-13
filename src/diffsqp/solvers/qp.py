@@ -7,9 +7,9 @@ class QP:
     def __init__(self, prob: Problem) -> None:
         self.prob = prob
         self.horizon = self.prob.horizon
-        self.n_batch = self.prob.states[0].shape[0]
-        self.nx = self.prob.n_state
-        self.nu = self.prob.n_ctrl
+        self.nB = self.prob.states[0].shape[0]
+        self.nx = self.prob.nx
+        self.nu = self.prob.nu
         self.nvars = (self.horizon - 1) * (self.nx + self.nu) + self.nx
 
         self.Dx = [None] * self.horizon
@@ -34,7 +34,7 @@ class QP:
         return self.Dx, self.Du, self.Dpi, self.Dlam
 
     def generate_problem_(self):
-        nB = self.n_batch
+        nB = self.nB
         nhor = self.horizon
         nx = self.nx
         nu = self.nu
@@ -177,10 +177,10 @@ class QP:
         return A, B, b, C, D, e
 
     def solve_kkt_(self, Q, q, A, b):
-        batch_size, n, _ = Q.shape
+        nB, n, _ = Q.shape
         m = A.shape[1]
 
-        zeros = torch.zeros((batch_size, m, m), device=Q.device, dtype=Q.dtype)
+        zeros = torch.zeros((nB, m, m), device=Q.device, dtype=Q.dtype)
         top_row = torch.cat([Q, A.transpose(1, 2)], dim=2)  # Result: (B, n, n+m)
         bottom_row = torch.cat([A, zeros], dim=2)  # Result: (B, m, n+m)
         KKT_matrix = torch.cat([top_row, bottom_row], dim=1)  # Result: (B, n+m, n+m)

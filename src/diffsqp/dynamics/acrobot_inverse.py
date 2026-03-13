@@ -33,7 +33,7 @@ class AcrobotInverseDynamics(Dynamics):
         self.I2 = I2 if I1 is not None else (self.m2 * self.l2**2) / 3.0
 
     def g(self, x: torch.Tensor, u: torch.Tensor):
-        n_batch = x.shape[0]
+        nB = x.shape[0]
         m1 = self.m1
         m2 = self.m2
         l1 = self.l1
@@ -64,7 +64,7 @@ class AcrobotInverseDynamics(Dynamics):
         return res
 
     def gx(self, x: torch.Tensor, u: torch.Tensor):
-        n_batch = x.shape[0]
+        nB = x.shape[0]
         ng = self.ng
         nx = self.nx
 
@@ -91,7 +91,7 @@ class AcrobotInverseDynamics(Dynamics):
         s2 = torch.sin(th2)
         c12 = torch.cos(th1 + th2)
 
-        grad = torch.zeros((n_batch, ng, nx))
+        grad = torch.zeros((nB, ng, nx))
 
         dres_dth1 = -m1 * grav * lc1 * c1 - m2 * grav * (l1 * c1 + lc2 * c12)
 
@@ -120,7 +120,7 @@ class AcrobotInverseDynamics(Dynamics):
         return grad
 
     def gu(self, x: torch.Tensor, u: torch.Tensor):
-        n_batch = x.shape[0]
+        nB = x.shape[0]
         ng = self.ng
         nu = self.nu
 
@@ -150,7 +150,7 @@ class AcrobotInverseDynamics(Dynamics):
         mult1 = I1 + I2 + m2 + l1 * l1 + 2.0 * m2 * l1 * lc2 * c2
         mult2 = I2 + m2 * l1 * lc2 * c2
 
-        grad = torch.zeros((n_batch, ng, nu))
+        grad = torch.zeros((nB, ng, nu))
         grad[:, 0:1, 0:1] = mult1.unsqueeze(2)
         grad[:, 0:1, 1:2] = mult2.unsqueeze(2)
         return grad

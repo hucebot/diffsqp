@@ -8,9 +8,9 @@ class Lqr:
     def __init__(self, prob: Problem) -> None:
         self.prob = prob
         self.horizon = self.prob.horizon
-        self.n_batch = self.prob.states[0].shape[0]
-        self.n_state = self.prob.n_state
-        self.n_ctrl = self.prob.n_ctrl
+        self.nB = self.prob.states[0].shape[0]
+        self.nx = self.prob.nx
+        self.nu = self.prob.nu
 
         self.A = [None] * (self.horizon - 1)
         self.B = [None] * (self.horizon - 1)
@@ -50,7 +50,7 @@ class Lqr:
             Q, R, S, q, r = self.calc_linearized_cost_terms_(
                 x_lin, u_lin, self.prob.costs[i]
             )
-            (self.A[i], self.B[i], self.b[i], C, D, e) = (
+            self.A[i], self.B[i], self.b[i], C, D, e = (
                 self.calc_linearized_dynamic_terms_(
                     x_lin, u_lin, x_next, self.prob.stage_dynamics[i]
                 )
@@ -81,8 +81,8 @@ class Lqr:
 
     def forward_pass_(self):
         # TODO: Add initial state optimization as an option
-        nx = self.prob.n_state
-        self.Dx[0] = torch.zeros([self.n_batch, nx])
+        nx = self.prob.nx
+        self.Dx[0] = torch.zeros([self.nB, nx])
         for i in range(self.horizon - 1):
             x_lin = self.prob.states[i]
             u_lin = self.prob.controls[i]
@@ -152,9 +152,9 @@ class Lqr:
             K_ext = torch.linalg.solve(R_ext, -S_ext)
             k_ext = torch.linalg.solve(R_ext, -r_ext)
             # Sanity check
-            nB = self.n_batch
-            nx = self.prob.n_state
-            nu = self.prob.n_ctrl
+            nB = self.nB
+            nx = self.prob.nx
+            nu = self.prob.nu
             assert K_ext.shape == torch.Size([nB, nu + ng, nx])
             assert k_ext.shape == torch.Size([nB, nu + ng])
 
@@ -168,9 +168,9 @@ class Lqr:
             v_ = q_ + mv(S_extT, k_ext)
 
         # Sanity checks
-        nB = self.n_batch
-        nx = self.prob.n_state
-        nu = self.prob.n_ctrl
+        nB = self.nB
+        nx = self.prob.nx
+        nu = self.prob.nu
         assert Q_.shape == torch.Size([nB, nx, nx])
         assert q_.shape == torch.Size([nB, nx])
         assert R_.shape == torch.Size([nB, nu, nu])
@@ -194,9 +194,9 @@ class Lqr:
             Dlam = mv(K_lam, Dx0) + k_lam
 
         # Sanity checks
-        nB = self.n_batch
-        nx = self.prob.n_state
-        nu = self.prob.n_ctrl
+        nB = self.nB
+        nx = self.prob.nx
+        nu = self.prob.nu
         assert Dx.shape == torch.Size([nB, nx])
         assert Du.shape == torch.Size([nB, nu])
 

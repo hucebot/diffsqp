@@ -3,11 +3,11 @@ import torch
 
 class TerminalCost:
     def __init__(self, Q, x_des=None):
-        self.n_batch = Q.shape[0]
-        self.n_state = Q.shape[1]
+        self.nB = Q.shape[0]
+        self.nx = Q.shape[1]
         self.Q = Q
         if x_des is None:
-            x_des = torch.zeros((n_batch, n_state))
+            x_des = torch.zeros((nB, nx))
 
         self.x_des = x_des
 
@@ -19,9 +19,9 @@ class TerminalCost:
         return 0.5 * (x_term)
 
     def lx(self, x):
-        """Gradient w.r.t x (B, n_state, 1)"""
+        """Gradient w.r.t x (B, nx, 1)"""
         return torch.bmm(self.Q, (x - self.x_des).unsqueeze(2)).squeeze(2)
 
     def lxx(self, x):
-        """Hessian w.r.t xx (B, n_state, n_state)"""
+        """Hessian w.r.t xx (B, nx, nx)"""
         return self.Q

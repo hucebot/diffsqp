@@ -5,28 +5,26 @@ import matplotlib.colors as mcolors
 
 
 class CartPoleAnimator:
-    def __init__(self, states, lp, dt, n_batch):
+    def __init__(self, states, lp, dt, nB):
         self.states = states
         self.lp = lp
         self.dt = dt
-        self.n_batch = n_batch
+        self.nB = nB
 
         # UI Constants
         self.cart_width = 0.3
         self.cart_height = 0.15
 
         # Setup Figure
-        self.fig, self.axs = plt.subplots(
-            n_batch, 1, figsize=(8, 3 * n_batch), sharex=True
-        )
-        if n_batch == 1:
+        self.fig, self.axs = plt.subplots(nB, 1, figsize=(8, 3 * nB), sharex=True)
+        if nB == 1:
             self.axs = [self.axs]
 
         self.carts = []
         self.poles = []
         colors = list(mcolors.TABLEAU_COLORS.values())
 
-        for i in range(n_batch):
+        for i in range(nB):
             ax = self.axs[i]
             color = colors[i % len(colors)]
 
@@ -57,7 +55,7 @@ class CartPoleAnimator:
 
     def _update(self, frame):
         updated_elements = []
-        for i in range(self.n_batch):
+        for i in range(self.nB):
             s = self.states[frame, i, 0]
             theta = self.states[frame, i, 1]
 
@@ -113,25 +111,23 @@ class CartPoleAnimator:
 
 
 class AcrobotAnimator:
-    def __init__(self, states, l1, l2, dt, n_batch):
+    def __init__(self, states, l1, l2, dt, nB):
         """
-        states: Array of shape [time, n_batch, 4]
+        states: Array of shape [time, nB, 4]
                 where indices 0 and 1 are theta1 and theta2.
         l1, l2: Lengths of the two links.
         dt: Time step.
-        n_batch: Number of parallel simulations to show.
+        nB: Number of parallel simulations to show.
         """
         self.states = states
         self.l1 = l1
         self.l2 = l2
         self.dt = dt
-        self.n_batch = n_batch
+        self.nB = nB
 
         # Setup Figure
-        self.fig, self.axs = plt.subplots(
-            n_batch, 1, figsize=(6, 6 * n_batch), sharex=True
-        )
-        if n_batch == 1:
+        self.fig, self.axs = plt.subplots(nB, 1, figsize=(6, 6 * nB), sharex=True)
+        if nB == 1:
             self.axs = [self.axs]
 
         self.lines = []
@@ -140,7 +136,7 @@ class AcrobotAnimator:
         # Total length for axis scaling
         L_total = (l1 + l2) * 1.1
 
-        for i in range(n_batch):
+        for i in range(nB):
             ax = self.axs[i]
             color = colors[i % len(colors)]
 
@@ -169,7 +165,7 @@ class AcrobotAnimator:
         return self.lines
 
     def _update(self, frame):
-        for i in range(self.n_batch):
+        for i in range(self.nB):
             # Acrobot states are usually: [theta1, theta2, dtheta1, dtheta2]
             th1 = self.states[frame, i, 0]
             th2 = self.states[frame, i, 1]

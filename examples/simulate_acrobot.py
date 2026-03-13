@@ -7,7 +7,7 @@ from diffsqp.utils.animate import AcrobotAnimator
 torch.set_default_dtype(torch.double)
 
 # 1. Setup Parameters
-n_batch = 2
+nB = 2
 dt = 0.001
 tf = 5.0  # Reduced time for faster testing
 steps = int(tf / dt)
@@ -16,8 +16,8 @@ model = AcrobotDynamics(m1=0.1, m2=0.1, l1=0.3, l2=0.3, grav=9.81)
 
 # 2. Initial State
 x = torch.tensor([[0.0, 0.0, 0.0, 0.0], [torch.pi, 0.0, 0.0, 0.1]])
-u = torch.zeros((n_batch, 1))
-u = torch.tensor([[0.0]]).repeat(n_batch, 1)
+u = torch.zeros((nB, 1))
+u = torch.tensor([[0.0]]).repeat(nB, 1)
 
 # 3. Storage for results
 state_history = [x.clone().numpy()]
@@ -38,5 +38,5 @@ controls = np.array(control_history)
 t = np.array(time_history)
 
 # # 4. Animate!
-anim = AcrobotAnimator(states, model.l1, model.l2, dt, n_batch)
+anim = AcrobotAnimator(states, model.l1, model.l2, dt, nB)
 anim.animate(step_size=5)

@@ -44,7 +44,7 @@ class CartPoleDynamics(Dynamics):
         """
         dfc/dx matrix: n_x x n_x
         """
-        batch_size = x.shape[0]
+        nB = x.shape[0]
 
         mc = self.mc
         mp = self.mp
@@ -97,7 +97,7 @@ class CartPoleDynamics(Dynamics):
         denominator = lp * (mc + mp * sth**2)
         dfc4_ddth = numerator / denominator
 
-        A = torch.zeros((batch_size, self.nx, self.nx), device=x.device)
+        A = torch.zeros((nB, self.nx, self.nx), device=x.device)
         A[:, 0, :] = torch.tensor([0.0, 0.0, 1.0, 0.0])
         A[:, 1, :] = torch.tensor([0.0, 0.0, 0.0, 1.0])
         A[:, 2, 1] = dfc3_dth.squeeze(1)
@@ -111,7 +111,7 @@ class CartPoleDynamics(Dynamics):
         """
         dfc/du matrix: n_x x n_u
         """
-        batch_size = x.shape[0]
+        nB = x.shape[0]
 
         mc = self.mc
         mp = self.mp
@@ -132,7 +132,7 @@ class CartPoleDynamics(Dynamics):
         denominator = lp * mc + lp * mp * sth**2
         dfc4_du = numerator / denominator
 
-        B = torch.zeros((batch_size, self.nx, self.nu), device=x.device)
+        B = torch.zeros((nB, self.nx, self.nu), device=x.device)
         B[:, 2, :] = dfc3_du
         B[:, 3, :] = dfc4_du
 

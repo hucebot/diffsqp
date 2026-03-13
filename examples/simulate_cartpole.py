@@ -5,7 +5,7 @@ from diffsqp.dynamics import CartPoleDynamics
 from diffsqp.utils.animate import CartPoleAnimator
 
 # 1. Setup Parameters
-n_batch = 2
+nB = 2
 dt = 0.001
 tf = 5.0  # Reduced time for faster testing
 steps = int(tf / dt)
@@ -14,8 +14,8 @@ model = CartPoleDynamics(mc=0.5, mp=0.3, lp=0.2, grav=9.81)
 
 # 2. Initial State
 x = torch.tensor([[0.0, torch.pi, 0.0, 0.0], [0.0, torch.pi, 0.0, 0.1]])
-u = torch.zeros((n_batch, 1))
-u = torch.tensor([[0.0]]).repeat(n_batch, 1)
+u = torch.zeros((nB, 1))
+u = torch.tensor([[0.0]]).repeat(nB, 1)
 
 # 3. Storage for results
 state_history = [x.clone().numpy()]
@@ -54,5 +54,5 @@ t = np.array(time_history)
 # plt.show()
 
 # 4. Animate!
-anim = CartPoleAnimator(states, model.lp, dt, n_batch)
+anim = CartPoleAnimator(states, model.lp, dt, nB)
 anim.animate(step_size=50)

@@ -39,10 +39,10 @@ class PendulumDynamics(Dynamics):
         [ 0.0,               1.0     ]
         [ -g/l * cos(theta), -b/ml^2 ]
         """
-        batch_size = x.shape[0]
+        nB = x.shape[0]
 
         # Initialize Jacobian tensor (Batch, State, State)
-        A = torch.zeros((batch_size, 2, 2), device=x.device)
+        A = torch.zeros((nB, 2, 2), device=x.device)
         A[:, 0, 1] = 1.0
         A[:, 1, 0] = -(self.grav / self.l) * torch.cos(x[:, 0])
         A[:, 1, 1] = -self.b * self.inertia_inv
@@ -54,7 +54,7 @@ class PendulumDynamics(Dynamics):
         [ 0.0    ]
         [ 1/ml^2 ]
         """
-        batch_size = x.shape[0]
-        B = torch.zeros((batch_size, 2, 1), device=x.device)
+        nB = x.shape[0]
+        B = torch.zeros((nB, 2, 1), device=x.device)
         B[:, 1, 0] = self.inertia_inv
         return B

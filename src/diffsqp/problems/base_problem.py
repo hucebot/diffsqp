@@ -20,53 +20,58 @@ class Problem(ABC):
         self.costates: List[torch.Tensor] = []
 
     def l(self, stage_idx, x, u=None):
-        nB = x.shape[0]
-        total_cost = torch.zeros((nB))
-        for c in self.costs[stage_idx]:
-            total_cost += c.l(x, u) if u is not None else c.l(x)
-        return total_cost
+        all_costs = torch.stack(
+            [c.l(x, u) if u is not None else c.l(x) for c in self.costs[stage_idx]]
+        )
+        return torch.sum(all_costs, dim=0)
 
     def lx(self, stage_idx, x, u=None):
-        nB = x.shape[0]
-        grad = torch.zeros((nB, self.nx))
-        for c in self.costs[stage_idx]:
-            grad += c.lx(x, u) if u is not None else c.lx(x)
-        return grad
+        all_grads = torch.stack(
+            [c.lx(x, u) if u is not None else c.lx(x) for c in self.costs[stage_idx]]
+        )
+        return torch.sum(all_grads, dim=0)
 
     def lu(self, stage_idx, x, u):
-        nB = x.shape[0]
-        grad = torch.zeros((nB, self.nu))
-        for c in self.costs[stage_idx]:
-            grad += c.lu(x, u)
-        return grad
+        all_grads = torch.stack(
+            [c.lu(x, u) if u is not None else c.lu(x) for c in self.costs[stage_idx]]
+        )
+        return torch.sum(all_grads, dim=0)
 
     def lxx(self, stage_idx, x, u=None):
-        nB = x.shape[0]
-        hessian = torch.zeros((nB, self.nx, self.nx))
-        for c in self.costs[stage_idx]:
-            hessian += c.lxx(x, u) if u is not None else c.lxx(x)
-        return hessian
+        all_hessians = torch.stack(
+            [c.lxx(x, u) if u is not None else c.lxx(x) for c in self.costs[stage_idx]]
+        )
+        return torch.sum(all_hessians, dim=0)
 
     def luu(self, stage_idx, x, u):
-        nB = x.shape[0]
-        hessian = torch.zeros((nB, self.nu, self.nu))
-        for c in self.costs[stage_idx]:
-            hessian += c.luu(x, u)
-        return hessian
+        all_hessians = torch.stack(
+            [c.luu(x, u) if u is not None else c.luu(x) for c in self.costs[stage_idx]]
+        )
+        return torch.sum(all_hessians, dim=0)
 
     def lux(self, stage_idx, x, u):
-        nB = x.shape[0]
-        hessian = torch.zeros((nB, self.nu, self.nx))
-        for c in self.costs[stage_idx]:
-            hessian += c.lux(x, u)
-        return hessian
+        all_hessians = torch.stack(
+            [c.lux(x, u) if u is not None else c.lux(x) for c in self.costs[stage_idx]]
+        )
+        return torch.sum(all_hessians, dim=0)
 
     def lxu(self, stage_idx, x, u):
-        nB = x.shape[0]
-        hessian = torch.zeros((nB, self.nx, self.nu))
-        for c in self.costs[stage_idx]:
-            hessian += c.lxu(x, u)
-        return hessian
+        all_hessians = torch.stack(
+            [c.lxu(x, u) if u is not None else c.lxu(x) for c in self.costs[stage_idx]]
+        )
+        return torch.sum(all_hessians, dim=0)
+
+    def g(self, stage_idx, x, u=None):
+        constr = torch.cat([c.g(x, u) for c in self.constraints[stage_idx]], dim=1)
+        return constr
+
+    def gx(self, stage_idx, x, u):
+        grad = torch.cat([c.gx(x, u) for c in self.constraints[stage_idx]], dim=1)
+        return grad
+
+    def gu(self, stage_idx, x, u):
+        grad = torch.cat([c.gu(x, u) for c in self.constraints[stage_idx]], dim=1)
+        return grad
 
     # def state(self, stage_idx: int) -> torch.Tensor:
     #     # TODO: Add check here to see if index corresponds to horizon length

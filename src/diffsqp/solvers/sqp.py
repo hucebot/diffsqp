@@ -204,8 +204,7 @@ class Sqp:
             max_dyn_viols[index_mask] = dyn_inf_norm[index_mask]
 
             if self.prob.constraints[k]:
-                g = self.prob.constraints[k].g
-                uact_viol = self.calc_underactuation_violation(g, x0, u0)
+                uact_viol = self.calc_underactuation_violation(k, x0, u0)
                 uact_inf_norm = torch.norm(uact_viol, p=float("inf"), dim=1)
                 index_mask = uact_inf_norm > max_uact_viols
                 max_uact_viols[index_mask] = uact_inf_norm[index_mask]
@@ -248,7 +247,7 @@ class Sqp:
             gamma += torch.norm(dyn_viol, p=float("inf"), dim=1)
             if self.prob.constraints[k]:
                 uact_viol = self.calc_underactuation_violation(
-                    self.prob.constraints[k].g,
+                    k,
                     x_cand[k],
                     u_cand[k],
                 )
@@ -260,8 +259,8 @@ class Sqp:
     def calc_dynamics_violation(self, f, x_next, x, u):
         return x_next - f(x, u, self.prob.dt)
 
-    def calc_underactuation_violation(self, g, x, u):
-        return g(x, u)
+    def calc_underactuation_violation(self, stage_idx, x, u):
+        return self.prob.g(stage_idx, x, u)
 
     # Calculate Lagrangian gradients
     def calc_Lx_Lu(self):

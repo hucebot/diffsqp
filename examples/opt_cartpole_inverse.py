@@ -14,6 +14,8 @@ from diffsqp.utils.animate import CartPoleAnimator
 # torch.set_default_dtype(torch.double)
 # torch.set_default_device("cuda")
 
+torch.manual_seed(0)
+
 lp = 0.2
 dt = 0.01
 tf = 1.0
@@ -52,7 +54,7 @@ for i in range(horizon - 1):
     prob.controls.append(torch.zeros((nB, nu)))
     prob.costs.append([LqrCost(Q, R)])
     prob.stage_dynamics.append(dyn)
-    prob.constraints[i] = uact
+    prob.constraints[i] = [uact]
 
 # Set terminal cost
 # prob.states.append(torch.zeros((nB, nx)))

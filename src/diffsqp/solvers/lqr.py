@@ -57,7 +57,7 @@ class Lqr:
             e = None
             if self.prob.constraints[i]:
                 C, D, e = self.calc_linearized_constraint_terms_(
-                    x_lin, u_lin, x_next, self.prob.constraints[i]
+                    i, x_lin, u_lin, x_next
                 )
 
             (
@@ -221,10 +221,10 @@ class Lqr:
         B = dynamics.fu(x_lin, u_lin, self.prob.dt)
         return A, B, b
 
-    def calc_linearized_constraint_terms_(self, x_lin, u_lin, x_next, dynamics):
-        C = dynamics.gx(x_lin, u_lin)
-        D = dynamics.gu(x_lin, u_lin)
-        e = dynamics.g(x_lin, u_lin)
+    def calc_linearized_constraint_terms_(self, stage_idx, x_lin, u_lin, x_next):
+        C = self.prob.gx(stage_idx, x_lin, u_lin)
+        D = self.prob.gu(stage_idx, x_lin, u_lin)
+        e = self.prob.g(stage_idx, x_lin, u_lin)
         return C, D, e
 
     def calc_final_cost_terms_(self, x_N):

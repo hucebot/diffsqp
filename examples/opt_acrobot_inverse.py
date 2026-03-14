@@ -67,7 +67,7 @@ for i in range(horizon - 1):
     prob.controls.append(torch.zeros((nB, nu)))
     prob.costs.append([LqrCost(Q, R)])
     prob.stage_dynamics.append(dyn)
-    prob.constraints[i] = uact
+    prob.constraints[i] = [uact]
 # Set terminal cost
 prob.states.append(x_des.clone())
 prob.costs.append([TerminalCost(Qf, x_des.clone())])

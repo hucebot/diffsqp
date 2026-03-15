@@ -1,7 +1,7 @@
 import torch
 from abc import ABC, abstractmethod
 
-from diffsqp.costs import Cost, TerminalCost
+from diffsqp.costs import Cost
 from diffsqp.dynamics import Dynamics
 from diffsqp.constraints import Constraint
 
@@ -12,7 +12,7 @@ class Problem(ABC):
         self.dt = dt
         self.nx = nx
         self.nu = nu
-        self.costs: List[List[Cost | TerminalCost]] = []
+        self.costs: List[List[Cost]] = []
         self.stage_dynamics: List[Dynamics] = []
         self.constraints: List[Constraints] = [None] * self.horizon
         self.states: List[torch.Tensor] = []
@@ -20,45 +20,31 @@ class Problem(ABC):
         self.costates: List[torch.Tensor] = []
 
     def l(self, stage_idx, x, u=None):
-        all_costs = torch.stack(
-            [c.l(x, u) if u is not None else c.l(x) for c in self.costs[stage_idx]]
-        )
+        all_costs = torch.stack([c.l(x, u) for c in self.costs[stage_idx]])
         return torch.sum(all_costs, dim=0)
 
     def lx(self, stage_idx, x, u=None):
-        all_grads = torch.stack(
-            [c.lx(x, u) if u is not None else c.lx(x) for c in self.costs[stage_idx]]
-        )
+        all_grads = torch.stack([c.lx(x, u) for c in self.costs[stage_idx]])
         return torch.sum(all_grads, dim=0)
 
     def lu(self, stage_idx, x, u):
-        all_grads = torch.stack(
-            [c.lu(x, u) if u is not None else c.lu(x) for c in self.costs[stage_idx]]
-        )
+        all_grads = torch.stack([c.lu(x, u) for c in self.costs[stage_idx]])
         return torch.sum(all_grads, dim=0)
 
     def lxx(self, stage_idx, x, u=None):
-        all_hessians = torch.stack(
-            [c.lxx(x, u) if u is not None else c.lxx(x) for c in self.costs[stage_idx]]
-        )
+        all_hessians = torch.stack([c.lxx(x, u) for c in self.costs[stage_idx]])
         return torch.sum(all_hessians, dim=0)
 
     def luu(self, stage_idx, x, u):
-        all_hessians = torch.stack(
-            [c.luu(x, u) if u is not None else c.luu(x) for c in self.costs[stage_idx]]
-        )
+        all_hessians = torch.stack([c.luu(x, u) for c in self.costs[stage_idx]])
         return torch.sum(all_hessians, dim=0)
 
     def lux(self, stage_idx, x, u):
-        all_hessians = torch.stack(
-            [c.lux(x, u) if u is not None else c.lux(x) for c in self.costs[stage_idx]]
-        )
+        all_hessians = torch.stack([c.lux(x, u) for c in self.costs[stage_idx]])
         return torch.sum(all_hessians, dim=0)
 
     def lxu(self, stage_idx, x, u):
-        all_hessians = torch.stack(
-            [c.lxu(x, u) if u is not None else c.lxu(x) for c in self.costs[stage_idx]]
-        )
+        all_hessians = torch.stack([c.lxu(x, u) for c in self.costs[stage_idx]])
         return torch.sum(all_hessians, dim=0)
 
     def g(self, stage_idx, x, u=None):

@@ -8,14 +8,14 @@ class Cost(ABC):
     """
 
     @abstractmethod
-    def l(self, x: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
+    def l(self, x: torch.Tensor, u: torch.Tensor = None) -> torch.Tensor:
         """
         Cost
         """
         raise NotImplementedError
 
     @abstractmethod
-    def lx(self, x: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
+    def lx(self, x: torch.Tensor, u: torch.Tensor = None) -> torch.Tensor:
         """
         Cost gradient w.r.t x
         """
@@ -29,7 +29,7 @@ class Cost(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def lxx(self, x: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
+    def lxx(self, x: torch.Tensor, u: torch.Tensor = None) -> torch.Tensor:
         """
         Cost Hessian w.r.t xx
         """

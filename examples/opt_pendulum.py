@@ -1,7 +1,7 @@
 import torch
 
 from diffsqp.problems import Problem
-from diffsqp.costs import LqrCost, TerminalCost
+from diffsqp.costs import LqrCost
 from diffsqp.dynamics import PendulumDynamics
 from diffsqp.solvers import Lqr
 from diffsqp.solvers import Admm
@@ -28,12 +28,12 @@ Qf = 1e6 * torch.eye(nx).repeat(nB, 1, 1)
 for i in range(horizon - 1):
     prob.states.append(torch.zeros((nB, nx)))
     prob.controls.append(torch.zeros((nB, nu)))
-    prob.costs.append([LqrCost(Q, R)])
+    prob.costs.append([LqrCost(Q=Q, R=R)])
     prob.stage_dynamics.append(dyn)
 # Set terminal cost
 # prob.states.append(torch.zeros((nB, nx)))
 prob.states.append(x_des)
-prob.costs.append([TerminalCost(Qf, x_des)])
+prob.costs.append([LqrCost(Q=Qf, x_des=x_des.clone())])
 
 # Create solver object
 # solver = Lqr(prob)

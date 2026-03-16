@@ -16,7 +16,7 @@ nx = 2
 nu = 1
 x_des = torch.tensor([torch.pi, 0.0]).repeat(nB, 1)
 
-prob = Problem(horizon, dt, nx, nu)
+prob = Problem(horizon, dt, nB, nx, nu)
 
 dyn = PendulumDynamics(m=1.0, l=1.0, b=0.2, grav=9.81)
 Q = 1e-5 * torch.eye(nx).repeat(nB, 1, 1)
@@ -26,14 +26,14 @@ Qf = 1e6 * torch.eye(nx).repeat(nB, 1, 1)
 
 # Set stage cost and constraints
 for i in range(horizon - 1):
-    prob.states.append(torch.zeros((nB, nx)))
-    prob.controls.append(torch.zeros((nB, nu)))
-    prob.costs.append([LqrCost(Q=Q, R=R)])
-    prob.stage_dynamics.append(dyn)
+    prob.states[i] = torch.zeros((nB, nx))
+    prob.costs.append([LqrCost(Q, R)])
+    prob.dynamics.append(dyn)
+
 # Set terminal cost
 # prob.states.append(torch.zeros((nB, nx)))
-prob.states.append(x_des)
-prob.costs.append([LqrCost(Q=Qf, x_des=x_des.clone())])
+prob.states[-1] = x_des.clone()
+prob.costs.append([LqrCost(Q=Qf, x_des=x_des)])
 
 # Create solver object
 # solver = Lqr(prob)
@@ -42,7 +42,8 @@ prob.costs.append([LqrCost(Q=Qf, x_des=x_des.clone())])
 # solver = Admm(prob)
 # solver.step()
 
-solver = Sqp(prob)
+qp_solver = Lqr(prob)
+solver = Sqp(prob, qp_solver)
 
 solver.solve()
 

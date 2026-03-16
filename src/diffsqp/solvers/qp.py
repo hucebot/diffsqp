@@ -47,8 +47,8 @@ class QP:
 
         A_qp2 = None
         b_qp2 = None
-        if self.prob.stage_dynamics[0].type == "inverse":
-            ng = self.prob.stage_dynamics[0].ng
+        if self.prob.dynamics[0].type == "inverse":
+            ng = self.prob.dynamics[0].ng
             A_qp2 = torch.zeros((nB, (nhor - 1) * ng, nvars))
             b_qp2 = torch.zeros((nB, (nhor - 1) * ng))
         for i in range(self.horizon - 1):
@@ -73,7 +73,7 @@ class QP:
 
             # Create constraint matrices
             A, B, b, C, D, e = self.calc_linearized_dynamic_terms_(
-                x_lin, u_lin, x_next, self.prob.stage_dynamics[i]
+                x_lin, u_lin, x_next, self.prob.dynamics[i]
             )
             c_i = i * (nx + nu)
             r_i = i * nx
@@ -83,8 +83,8 @@ class QP:
 
             b_qp1[:, r_i : r_i + nx] = -b
 
-            if self.prob.stage_dynamics[0].type == "inverse":
-                ng = self.prob.stage_dynamics[0].ng
+            if self.prob.dynamics[0].type == "inverse":
+                ng = self.prob.dynamics[0].ng
                 c_i = i * (nx + nu)
                 r_i = i * ng
                 A_qp2[:, r_i : r_i + ng, c_i : c_i + nx] = C
@@ -107,7 +107,7 @@ class QP:
 
         A_qp = None
         b_qp = None
-        if self.prob.stage_dynamics[0].type == "inverse":
+        if self.prob.dynamics[0].type == "inverse":
             A_qp = torch.cat([A_qp1, A_qp2], dim=1)
             b_qp = torch.cat([b_qp1, b_qp2], dim=1)
         else:

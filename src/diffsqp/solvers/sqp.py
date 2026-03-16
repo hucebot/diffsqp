@@ -196,7 +196,7 @@ class Sqp:
             x0 = self.prob.states[k]
             u0 = self.prob.controls[k]
             x1 = self.prob.states[k + 1]
-            f = self.prob.stage_dynamics[k].f
+            f = self.prob.dynamics[k].f
 
             dyn_viol = self.calc_dynamics_violation(f, x1, x0, u0)
             dyn_inf_norm = torch.norm(dyn_viol, p=float("inf"), dim=1)
@@ -239,7 +239,7 @@ class Sqp:
             cost += self.prob.l(k, x_cand[k], u_cand[k])
             # Calculate constraint violations
             dyn_viol = self.calc_dynamics_violation(
-                self.prob.stage_dynamics[k].f,
+                self.prob.dynamics[k].f,
                 x_cand[k + 1],
                 x_cand[k],
                 u_cand[k],
@@ -274,8 +274,8 @@ class Sqp:
             lam = self.lam[k]
             lx = self.prob.lx
             lu = self.prob.lu
-            fx = self.prob.stage_dynamics[k].fx
-            fu = self.prob.stage_dynamics[k].fu
+            fx = self.prob.dynamics[k].fx
+            fu = self.prob.dynamics[k].fu
             Lx += lx(k, x, u) + mv(torch.transpose(fx(x, u, dt), 1, 2), pi)
             Lu += lu(k, x, u) + mv(torch.transpose(fu(x, u, dt), 1, 2), pi)
         # Add final node cost

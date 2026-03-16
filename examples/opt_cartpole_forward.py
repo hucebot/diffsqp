@@ -34,7 +34,7 @@ x_des = torch.tensor([0.0, torch.pi, 0.0, 0.0]).repeat(nB, 1)
 x_init = torch.tensor([0.0, 0.0, 0.0, 0.0]).repeat(nB, 1)
 x_init[:, 0:2] += 0.1 * torch.randn((nB, 2))
 
-prob = Problem(horizon, dt, nx, nu)
+prob = Problem(horizon, dt, nB, nx, nu)
 q_w = torch.tensor([1e-6, 1e-6, 1e-6, 1e-6])
 r_w = torch.tensor([1e-3])
 qf_w = torch.tensor([1e5, 1e5, 1e5, 1e5])
@@ -45,14 +45,13 @@ Qf = qf_w * torch.eye(nx).repeat(nB, 1, 1)
 
 # Set stage cost and constraints
 for i in range(horizon - 1):
-    prob.states.append(x_init.clone())
-    prob.controls.append(torch.zeros((nB, nu)))
+    prob.states[i] = x_init.clone()
     prob.costs.append([LqrCost(Q=Q, R=R)])
-    prob.stage_dynamics.append(dyn)
+    prob.dynamics.append(dyn)
 
 # Set terminal cost
 # prob.states.append(torch.zeros((nB, nx)))
-prob.states.append(x_des.clone())
+prob.states[-1] = x_des.clone()
 prob.costs.append([LqrCost(Q=Qf, x_des=x_des.clone())])
 
 # Create solver object

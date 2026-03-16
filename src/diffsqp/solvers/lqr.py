@@ -49,7 +49,7 @@ class Lqr:
 
             Q, R, S, q, r = self.calc_linearized_cost_terms_(i, x_lin, u_lin)
             self.A[i], self.B[i], self.b[i] = self.calc_linearized_dynamics_terms_(
-                x_lin, u_lin, x_next, self.prob.stage_dynamics[i]
+                x_lin, u_lin, x_next, self.prob.dynamics[i]
             )
 
             C = None

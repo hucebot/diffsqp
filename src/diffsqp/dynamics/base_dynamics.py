@@ -1,7 +1,5 @@
 import torch
 
-from diffsqp.utils.math import mm, mv
-
 
 class Dynamics:
     def __init__(self, nx, nu, nq, nv):
@@ -14,12 +12,11 @@ class Dynamics:
         """
         Discrete-time dynamics: x_k+1 = f(x_k, u_k)
         """
-        x_dot = self.fc(x, u).clone()
+        x_dot = self.fc(x, u)
         # return x + dt * self.fc(x, u)
 
-        nB = x.shape[0]
         E = self.calc_semi_impl_matrix_(dt)
-        return x + mv(E, x_dot)
+        return x + torch.einsum("ij,...j->...i", E, x_dot)
 
     def fx(self, x: torch.Tensor, u: torch.Tensor, dt: float) -> torch.Tensor:
         """
@@ -27,9 +24,12 @@ class Dynamics:
         """
         # return torch.add(dt * self.fcx(x, u), torch.eye(self.nx))
 
-        nB = x.shape[0]
         E = self.calc_semi_impl_matrix_(dt)
-        return torch.add(mm(E, self.fcx(x, u)), torch.eye(self.nx))
+
+        fcx_val = self.fcx(x, u)
+        e_fcx = torch.einsum("ij,...jk->...ik", E, fcx_val)
+
+        return e_fcx + torch.eye(self.nx)
 
     def fu(self, x: torch.Tensor, u: torch.Tensor, dt: float) -> torch.Tensor:
         """
@@ -37,37 +37,38 @@ class Dynamics:
         """
         # return dt * self.fcu(x, u)
 
-        nB = x.shape[0]
         E = self.calc_semi_impl_matrix_(dt)
-        return mm(E, self.fcu(x, u))
+
+        fcu_val = self.fcu(x, u)
+        return torch.einsum("ij,...jk->...ik", E, fcu_val)
 
     def fc(self, x: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
         """
         Continuous time dynamics: x_dot = fc(x_k, u_k)
         """
-        q_dot = x[:, self.nq :]
-        q_ddot = u[:, :]
+        q_dot = x[..., self.nq :]
+        q_ddot = u[..., :]
 
-        return torch.cat([q_dot, q_ddot], dim=1)
+        return torch.cat([q_dot, q_ddot], dim=-1)
 
     def fcx(self, x, u) -> torch.Tensor:
         """
         Gradient of continuous time dynamics w.r.t x
         """
-        nB = x.shape[0]
+        n_B = x.shape[:-1]
         # TODO: Remove batch dimension from grad
-        grad = torch.zeros(self.nx, self.nx).repeat(nB, 1, 1)
-        grad[:, 0 : self.nv, self.nv :] = torch.eye(self.nv)
+        grad = torch.zeros(*n_B, self.nx, self.nx)
+        grad[..., 0 : self.nv, self.nv :] = torch.eye(self.nv)
         return grad
 
     def fcu(self, x: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
         """
         Gradient of continuous time dynamics w.r.t u
         """
-        nB = x.shape[0]
+        n_B = x.shape[:-1]
         # TODO: Remove batch dimension from grad
-        grad = torch.zeros(self.nx, self.nu).repeat(nB, 1, 1)
-        grad[:, self.nv :, :] = torch.eye(self.nu)
+        grad = torch.zeros(*n_B, self.nx, self.nu)
+        grad[..., self.nv :, :] = torch.eye(self.nu)
         return grad
 
     def calc_semi_impl_matrix_(self, dt):

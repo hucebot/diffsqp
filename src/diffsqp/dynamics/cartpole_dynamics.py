@@ -22,11 +22,11 @@ class CartPoleDynamics(Dynamics):
         lp = self.lp
         grav = self.grav
 
-        s = x[:, 0:1]
-        th = x[:, 1:2]
-        ds = x[:, 2:3]
-        dth = x[:, 3:4]
-        fx = u[:, 0:1]
+        s = x[..., 0:1]
+        th = x[..., 1:2]
+        ds = x[..., 2:3]
+        dth = x[..., 3:4]
+        fx = u[..., 0:1]
 
         dds = (fx + mp * sin(th) * (lp * dth**2 + grav * cos(th))) / (
             mc + mp * sin(th) ** 2
@@ -38,24 +38,24 @@ class CartPoleDynamics(Dynamics):
             - (mc + mp) * grav * sin(th)
         ) / (lp * (mc + mp * sin(th) ** 2))
 
-        return torch.cat([ds, dth, dds, ddth], dim=1)
+        return torch.cat([ds, dth, dds, ddth], dim=-1)
 
     def fcx(self, x: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
         """
         dfc/dx matrix: n_x x n_x
         """
-        nB = x.shape[0]
+        n_B = x.shape[:-1]
 
         mc = self.mc
         mp = self.mp
         lp = self.lp
         grav = self.grav
 
-        s = x[:, 0:1]
-        th = x[:, 1:2]
-        ds = x[:, 2:3]
-        dth = x[:, 3:4]
-        fx = u[:, 0:1]
+        s = x[..., 0:1]
+        th = x[..., 1:2]
+        ds = x[..., 2:3]
+        dth = x[..., 3:4]
+        fx = u[..., 0:1]
         sth = sin(th)
         cth = cos(th)
 
@@ -97,13 +97,13 @@ class CartPoleDynamics(Dynamics):
         denominator = lp * (mc + mp * sth**2)
         dfc4_ddth = numerator / denominator
 
-        A = torch.zeros((nB, self.nx, self.nx), device=x.device)
-        A[:, 0, :] = torch.tensor([0.0, 0.0, 1.0, 0.0])
-        A[:, 1, :] = torch.tensor([0.0, 0.0, 0.0, 1.0])
-        A[:, 2, 1] = dfc3_dth.squeeze(1)
-        A[:, 3, 1] = dfc4_dth.squeeze(1)
-        A[:, 2, 3] = dfc3_ddth.squeeze(1)
-        A[:, 3, 3] = dfc4_ddth.squeeze(1)
+        A = torch.zeros((*n_B, self.nx, self.nx))
+        A[..., 0, :] = torch.tensor([0.0, 0.0, 1.0, 0.0])
+        A[..., 1, :] = torch.tensor([0.0, 0.0, 0.0, 1.0])
+        A[..., 2, 1] = dfc3_dth.squeeze(1)
+        A[..., 3, 1] = dfc4_dth.squeeze(1)
+        A[..., 2, 3] = dfc3_ddth.squeeze(1)
+        A[..., 3, 3] = dfc4_ddth.squeeze(1)
 
         return A
 
@@ -111,18 +111,18 @@ class CartPoleDynamics(Dynamics):
         """
         dfc/du matrix: n_x x n_u
         """
-        nB = x.shape[0]
+        n_B = x.shape[:-1]
 
         mc = self.mc
         mp = self.mp
         lp = self.lp
         grav = self.grav
 
-        s = x[:, 0:1]
-        th = x[:, 1:2]
-        ds = x[:, 2:3]
-        dth = x[:, 3:4]
-        fx = u[:, 0:1]
+        s = x[..., 0:1]
+        th = x[..., 1:2]
+        ds = x[..., 2:3]
+        dth = x[..., 3:4]
+        fx = u[..., 0:1]
         sth = sin(th)
         cth = cos(th)
 
@@ -132,8 +132,8 @@ class CartPoleDynamics(Dynamics):
         denominator = lp * mc + lp * mp * sth**2
         dfc4_du = numerator / denominator
 
-        B = torch.zeros((nB, self.nx, self.nu), device=x.device)
-        B[:, 2, :] = dfc3_du
-        B[:, 3, :] = dfc4_du
+        B = torch.zeros((*n_B, self.nx, self.nu))
+        B[..., 2, :] = dfc3_du
+        B[..., 3, :] = dfc4_du
 
         return B

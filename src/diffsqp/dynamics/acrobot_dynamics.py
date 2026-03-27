@@ -44,11 +44,11 @@ class AcrobotDynamics(Dynamics):
         I1 = self.I1
         I2 = self.I2
 
-        th1 = x[:, 0:1]
-        th2 = x[:, 1:2]
-        dth1 = x[:, 2:3]
-        dth2 = x[:, 3:4]
-        tau = u[:, 0:1]
+        th1 = x[..., 0:1]
+        th2 = x[..., 1:2]
+        dth1 = x[..., 2:3]
+        dth2 = x[..., 3:4]
+        tau = u[..., 0:1]
 
         s1 = sin(th1)
         s2 = sin(th2)
@@ -79,13 +79,13 @@ class AcrobotDynamics(Dynamics):
         )
         ddth2 = (nom1 + nom2) / denom
 
-        return torch.cat([dth1, dth2, ddth1, ddth2], dim=1)
+        return torch.cat([dth1, dth2, ddth1, ddth2], dim=-1)
 
     def fcx(self, x: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
         """
         dfc/dx matrix: n_x x n_x
         """
-        nB = x.shape[0]
+        n_B = x.shape[:-1]
 
         m1 = self.m1
         m2 = self.m2
@@ -97,11 +97,11 @@ class AcrobotDynamics(Dynamics):
         I1 = self.I1
         I2 = self.I2
 
-        th1 = x[:, 0:1]
-        th2 = x[:, 1:2]
-        dth1 = x[:, 2:3]
-        dth2 = x[:, 3:4]
-        tau = u[:, 0:1]
+        th1 = x[..., 0:1]
+        th2 = x[..., 1:2]
+        dth1 = x[..., 2:3]
+        dth2 = x[..., 3:4]
+        tau = u[..., 0:1]
 
         s1 = sin(th1)
         s2 = sin(th2)
@@ -218,17 +218,17 @@ class AcrobotDynamics(Dynamics):
         # DDTH2_DTH2
         d_ddth2_dth2 = (d_nom1_dth2 + d_nom2_dth2) / denom
 
-        A = torch.zeros((nB, self.nx, self.nx), device=x.device)
-        A[:, 0, :] = torch.tensor([0.0, 0.0, 1.0, 0.0])
-        A[:, 1, :] = torch.tensor([0.0, 0.0, 0.0, 1.0])
-        A[:, 2, 0] = d_ddth1_th1.squeeze(1)
-        A[:, 2, 1] = d_ddth1_th2.squeeze(1)
-        A[:, 2, 2] = d_ddth1_dth1.squeeze(1)
-        A[:, 2, 3] = d_ddth1_dth2.squeeze(1)
-        A[:, 3, 0] = d_ddth2_th1.squeeze(1)
-        A[:, 3, 1] = d_ddth2_th2.squeeze(1)
-        A[:, 3, 2] = d_ddth2_dth1.squeeze(1)
-        A[:, 3, 3] = d_ddth2_dth2.squeeze(1)
+        A = torch.zeros((*n_B, self.nx, self.nx), device=x.device)
+        A[..., 0, :] = torch.tensor([0.0, 0.0, 1.0, 0.0])
+        A[..., 1, :] = torch.tensor([0.0, 0.0, 0.0, 1.0])
+        A[..., 2, 0] = d_ddth1_th1.squeeze(1)
+        A[..., 2, 1] = d_ddth1_th2.squeeze(1)
+        A[..., 2, 2] = d_ddth1_dth1.squeeze(1)
+        A[..., 2, 3] = d_ddth1_dth2.squeeze(1)
+        A[..., 3, 0] = d_ddth2_th1.squeeze(1)
+        A[..., 3, 1] = d_ddth2_th2.squeeze(1)
+        A[..., 3, 2] = d_ddth2_dth1.squeeze(1)
+        A[..., 3, 3] = d_ddth2_dth2.squeeze(1)
 
         return A
 
@@ -236,7 +236,7 @@ class AcrobotDynamics(Dynamics):
         """
         dfc/du matrix: n_x x n_u
         """
-        nB = x.shape[0]
+        n_B = x.shape[:-1]
 
         m2 = self.m2
         l1 = self.l1
@@ -244,8 +244,8 @@ class AcrobotDynamics(Dynamics):
         I1 = self.I1
         I2 = self.I2
 
-        th2 = x[:, 1:2]
-        tau = u[:, 0:1]
+        th2 = x[..., 1:2]
+        tau = u[..., 0:1]
 
         c2 = cos(th2)
 
@@ -256,8 +256,8 @@ class AcrobotDynamics(Dynamics):
         d_nom2_2_tau = I1 + I2 + l1 * l1 * m2 + 2.0 * l1 * lc2 * m2 * c2
         d_ddth2_tau = d_nom2_2_tau / denom
 
-        B = torch.zeros((nB, self.nx, self.nu), device=x.device)
-        B[:, 2, :] = d_ddth1_tau
-        B[:, 3, :] = d_ddth2_tau
+        B = torch.zeros((*n_B, self.nx, self.nu), device=x.device)
+        B[..., 2, 0] = d_ddth1_tau[..., 0]
+        B[..., 3, 0] = d_ddth2_tau[..., 0]
 
         return B

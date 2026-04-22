@@ -5,7 +5,7 @@ from diffsqp.utils.math import mm, mv, inf_norm
 from typing import List
 
 from diffsqp.problems import Problem
-from diffsqp.solvers import Lqr
+from diffsqp.solvers import Lqr, QP
 from dataclasses import dataclass
 
 
@@ -42,6 +42,8 @@ class Sqp:
         self.qp_solver = None
         if self.params.qp_solver == "lqr":
             self.qp_solver = Lqr(prob)
+        elif self.params.qp_solver == "qp":
+            self.qp_solver = QP(prob)
 
         # Log best line search metrics
         self.best_cost, self.best_gamma, self.best_uact = self.calc_metrics(

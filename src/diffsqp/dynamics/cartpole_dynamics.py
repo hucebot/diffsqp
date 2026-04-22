@@ -7,7 +7,6 @@ from diffsqp.dynamics import Dynamics
 class CartPoleDynamics(Dynamics):
     def __init__(self, mc: float, mp: float, lp: float, grav: float = 9.81):
         super().__init__(nx=4, nu=1, nq=2, nv=2)
-        self.type = "forward"
         self.mc = mc
         self.mp = mp
         self.lp = lp

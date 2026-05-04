@@ -6,6 +6,8 @@ from diffsqp.costs import Cost
 from diffsqp.dynamics import Dynamics
 from diffsqp.constraints import Constraint
 
+from diffsqp.utils.math import mv
+
 
 class Problem(ABC):
     """
@@ -51,9 +53,27 @@ class Problem(ABC):
             torch.zeros((nB, nu)) for _ in range(self.horizon - 1)
         ]
         self.pi: List[torch.Tensor] = [
-            torch.zeros((nB, nx)) for _ in range(self.horizon - 1)
+            torch.zeros((nB, nx)) for _ in range(self.horizon)
         ]
-        self.ni: List[torch.Tensor] = [None for _ in range(self.horizon)]
+        self.ni: List[torch.Tensor] = [None for _ in range(self.horizon - 1)]
+
+    # --- Lagrangian Calculation Methods ---
+
+    def L(self):
+        L = torch.zeros((self.n_B))
+        for k in range(self.horizon - 1):
+            x = self.states[k]
+            u = self.controls[k]
+            pi_0 = self.pi[k]
+            pi_1 = self.pi[k + 1]
+            L += (
+                self.l(k, x, u)
+                + mv(torch.transpose(self.dynamics[k].f(x, u), 1, 2), pi_1)
+                - pi_0
+            )
+        x_N = self.states[-1]
+        pi_N = self.pi[-1]
+        L += self.l(-1, x_N) - pi_N
 
     # --- Cost Aggregation Methods ---
 

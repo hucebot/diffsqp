@@ -32,6 +32,13 @@ class SqpIterationLog:
     cuda_allocated_bytes: int
 
 
+## What to keep as info:
+# QP time
+# Line search time
+# Line search iterations
+# Total SQP iterations
+
+
 class Sqp:
     def __init__(self, prob: Problem, params: SqpParams) -> None:
         self.prob = prob
@@ -110,6 +117,38 @@ class Sqp:
             self.iter_log["cuda_allocated_bytes"] = torch.cuda.memory_allocated(0)
         return self.iter_log
 
+    # def merit_fn(self, x, u):
+    #     cost = torch.zeros((self.params.n_B))
+    #     gamma = torch.zeros((self.params.n_B))
+    #     uact = torch.zeros((self.params.n_B))
+    #     for k in range(self.horizon - 1):
+    #         # Calculate total trajectory cost
+    #         cost += self.prob.l(k, x_cand[k], u_cand[k])
+    #         # Calculate constraint violations
+    #         dyn_viol = self.calc_dynamics_violation(
+    #             self.prob.dynamics[k].f,
+    #             x_cand[k + 1],
+    #             x_cand[k],
+    #             u_cand[k],
+    #         )
+    #         gamma += inf_norm(dyn_viol)
+    #         if self.prob.constraints[k]:
+    #             uact_viol = self.calc_underactuation_violation(
+    #                 k,
+    #                 x_cand[k],
+    #                 u_cand[k],
+    #             )
+    #             uact += inf_norm(uact_viol)
+    #     # Add final node cost
+    #     cost += self.prob.l(-1, x_cand[-1])
+    #     pass
+    #
+    # # Given the QP solution, evaluate the best alpha to return vars = vars + alpha * qp_corrections
+    # def merit_line_search(self, delta_x, delta_u, mu, nu, max_iter: float = 10):
+    #     alpha = torch.ones((self.params.n_B, 1))
+    #
+    #     return new_x, new_u, new_mu, new_nu
+
     def line_search(self, delta_x, delta_u, pi, ni, max_iter: float = 10):
         alpha = torch.ones((self.params.n_B, 1))
         dones = self.terminated.clone()
@@ -167,45 +206,35 @@ class Sqp:
         return alpha, dones, i
 
     def check_termination(self, delta_x, delta_u):
-        ## Lagrangian Gradient ##
-        # Lx, Lu = self.calc_Lx_Lu()
-        # max_Lx = torch.norm(Lx, p=float("inf"), dim=1)
-        # max_Lu = torch.norm(Lx, p=float("inf"), dim=1)
+        """
+        Check the KKT conditions:
+        - ||Lx||_inf < eps
+        - ||Lu||_inf < eps
+        - ||dynamics(x, u) - x_next||_inf < eps
+        - ||g(x, u)||_inf < eps
 
-        max = torch.zeros(self.params.n_B)
-        for i in range(len(delta_u)):
-            # cand = torch.max(torch.square(dx), dim=1).values
-            dx = delta_x[i]
-            du = delta_u[i]
-            res = torch.max(
-                mm(dx.unsqueeze(2).transpose(1, 2), dx.unsqueeze(2)).squeeze(2)
-                + mm(du.unsqueeze(2).transpose(1, 2), du.unsqueeze(2)).squeeze(2),
-                dim=1,
-            ).values
-            max[res > max] = res[res > max]
-        dx = delta_x[i]
-        du = delta_u[i]
-        res = torch.max(
-            mm(dx.unsqueeze(2).transpose(1, 2), dx.unsqueeze(2)).squeeze(2), dim=1
-        ).values
-        max[res > max] = res[res > max]
-        dx_crit = max < 0.1
+        ! : For the Lagrangian gradient, we only need to include the active constraints
+        """
+        ## Lagrangian Gradients ##
+        Lx, Lu = self.calc_Lx_Lu()
+        # print(Lx)
 
-        ## Dynamics Violation ##
-        # Track largest violation for each batch
-        max_dyn_viols = torch.zeros(self.params.n_B)
+        ## Constraint Violations ##
+        # Dynamics
+        states_tensor = torch.stack(self.prob.states, dim=0)
+        controls_tensor = torch.stack(self.prob.controls, dim=0)
+        x_curr = states_tensor[:-1]
+        u_curr = controls_tensor[:]
+        x_next = states_tensor[1:]
+        f = self.prob.dynamics[0].f
+        all_dyn_viols = x_next - f(x_curr, u_curr, self.prob.dt)
+
+        # Underactuation
         max_uact_viols = torch.zeros(self.params.n_B)
         for k in range(self.horizon - 1):
             x0 = self.prob.states[k]
             u0 = self.prob.controls[k]
             x1 = self.prob.states[k + 1]
-            f = self.prob.dynamics[k].f
-
-            dyn_viol = self.calc_dynamics_violation(f, x1, x0, u0)
-            dyn_inf_norm = torch.norm(dyn_viol, p=float("inf"), dim=1)
-            index_mask = dyn_inf_norm > max_dyn_viols
-            max_dyn_viols[index_mask] = dyn_inf_norm[index_mask]
-
             if self.prob.constraints[k]:
                 uact_viol = self.calc_underactuation_violation(k, x0, u0)
                 uact_inf_norm = inf_norm(uact_viol)
@@ -215,16 +244,25 @@ class Sqp:
         # terminate_Lx = max_Lx < self.params.eps
         # terminate_Lu = max_Lu < self.params.eps
         # print("Max dyn viols: ", max_dyn_viols, ", ", max_uact_viols)
-        self.iter_log["max_dyn_viol"] = torch.norm(max_dyn_viols, p=float("inf")).item()
+        self.iter_log["max_dyn_viol"] = torch.norm(all_dyn_viols, p=float("inf")).item()
         self.iter_log["max_uact_viol"] = torch.norm(
             max_uact_viols, p=float("inf")
         ).item()
-        terminate_dyn_viols = max_dyn_viols < self.params.eps
-        terminate_uact_viols = max_uact_viols < self.params.eps
 
-        # self.terminated = torch.logical_or(terminate_Lx, terminate_Lu)
-        self.terminated = torch.logical_and(terminate_dyn_viols, terminate_uact_viols)
-        self.terminated = torch.logical_and(self.terminated, dx_crit)
+        terminate_Lx = inf_norm(Lx) < self.params.eps
+        terminate_Lu = inf_norm(Lu) < self.params.eps
+        terminate_dyn_viols = (
+            torch.norm(all_dyn_viols, p=float("inf"), dim=[0, 2]) < self.params.eps
+        )
+        terminate_uact_viols = max_uact_viols < self.params.eps
+        return torch.stack(
+            [
+                # terminate_Lx,
+                # terminate_Lu,
+                terminate_dyn_viols,
+                terminate_uact_viols,
+            ]
+        ).all()
 
     def calc_cadidate_solutions(self, alpha, curr_x, curr_u, delta_x, delta_u):
         x_cand = []
@@ -281,8 +319,8 @@ class Sqp:
             lu = self.prob.lu
             fx = self.prob.dynamics[k].fx
             fu = self.prob.dynamics[k].fu
-            Lx += lx(k, x, u) + mv(torch.transpose(fx(x, u, dt), 1, 2), pi)
-            Lu += lu(k, x, u) + mv(torch.transpose(fu(x, u, dt), 1, 2), pi)
+            Lx += lx(k, x, u)
+            Lu += lu(k, x, u)
         # Add final node cost
         x_N = self.prob.states[-1]
         Lx += self.prob.lx(-1, x_N)

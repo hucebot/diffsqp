@@ -4,18 +4,17 @@ import torch
 from diffsqp.utils.math import mm, mv, inf_norm
 from typing import List
 
-from diffsqp.problems import Problem
+from diffsqp.problems import Problem, ProblemParams
 from diffsqp.solvers import Lqr, QP
 from dataclasses import dataclass
 
 
 @dataclass
 class SqpParams:
+    sqp_max_iter: int
+    sqp_eps: float
     qp_solver: str
-    ls_technique: str
-    n_B: int
-    max_iter: int
-    eps: float
+    ls_function: str
 
 
 @dataclass
@@ -53,37 +52,37 @@ class Sqp:
         elif self.params.qp_solver == "qp":
             self.qp_solver = QP(prob)
 
-        if self.params.ls_technique == "filter":
+        if self.params.ls_function == "filter":
             # Log best line search metrics
             self.best_cost, self.best_gamma, self.best_uact = self.calc_metrics(
                 self.prob.states,
                 self.prob.controls,
             )
-        elif self.params.ls_technique == "merit":
+        elif self.params.ls_function == "merit":
             # Merit function
             self.ls_mu = 1e6
             self.best_phi = self.merit(self.prob.states, self.prob.controls)
 
-        self.terminated = torch.zeros((self.params.n_B), dtype=torch.bool)
+        self.terminated = torch.zeros((self.prob.n_batch), dtype=torch.bool)
 
         self.iter_log = {
-            "nB": self.params.n_B,
+            "nB": self.prob.n_batch,
             "terminated": 0,
             "ssqp_iterations": 0,
             "t_solve_s": 0.0,
             "cuda_reserved_bytes": 0,
             "cuda_allocated_bytes": 0,
-            "t_qp_solve": [0.0] * self.params.max_iter,
-            "t_line_search": [0.0] * self.params.max_iter,
-            "line_search_iters": [0.0] * self.params.max_iter,
+            "t_qp_solve": [0.0] * self.params.sqp_max_iter,
+            "t_line_search": [0.0] * self.params.sqp_max_iter,
+            "line_search_iters": [0.0] * self.params.sqp_max_iter,
             "max_dyn_viol": 0.0,
             "max_uact_viol": 0.0,
         }
 
     def solve(self):
-        # Solve for max_iter steps
+        # Solve for sqp_max_iter steps
         t_solve_start = time.time()
-        for iter in range(self.params.max_iter):
+        for iter in range(self.params.sqp_max_iter):
             # Get LQR corrections
             # Perform ADMM step
             start = time.time()
@@ -125,13 +124,13 @@ class Sqp:
         # dyn[idx] = uact[idx]
         return J + self.ls_mu * dyn + self.ls_mu * uact
 
-    def line_search(self, delta_x, delta_u, pi, ni, max_iter: float = 10):
-        alpha = torch.ones((self.params.n_B, 1))
+    def line_search(self, delta_x, delta_u, pi, ni, sqp_max_iter: float = 10):
+        alpha = torch.ones((self.prob.n_batch, 1))
         dones = self.terminated.clone()
         i = 0
-        while (not torch.all(dones)) and (i < max_iter):
+        while (not torch.all(dones)) and (i < sqp_max_iter):
             i += 1
-            gamma = torch.zeros((self.params.n_B, 1))
+            gamma = torch.zeros((self.prob.n_batch, 1))
 
             # Evaluate current alpha
             x_cand, u_cand = self.calc_cadidate_solutions(
@@ -142,7 +141,7 @@ class Sqp:
                 delta_u,
             )
 
-            if self.params.ls_technique == "filter":
+            if self.params.ls_function == "filter":
                 cost, gamma, uact = self.calc_metrics(x_cand, u_cand)
                 # Update successful environments
                 cost_improved = cost < self.best_cost
@@ -152,7 +151,7 @@ class Sqp:
                 #     cost_improved | gamma_improved | uact_improved
                 # ) & line_search_done
                 update_mask = (cost_improved | gamma_improved | uact_improved) & ~dones
-            elif self.params.ls_technique == "merit":
+            elif self.params.ls_function == "merit":
                 # Merit Function
                 phi = self.merit(x_cand, u_cand)
                 phi_improved = phi <= self.best_phi
@@ -168,14 +167,14 @@ class Sqp:
                 # Mark environments as finished
                 dones[update_mask] = True
 
-            if self.params.ls_technique == "filter":
+            if self.params.ls_function == "filter":
                 # Update best cost and gamma
                 self.best_cost[cost_improved & ~dones] = cost[cost_improved & ~dones]
                 self.best_gamma[gamma_improved & ~dones] = gamma[
                     gamma_improved & ~dones
                 ]
                 self.best_uact[uact_improved & ~dones] = uact[uact_improved & ~dones]
-            elif self.params.ls_technique == "merit":
+            elif self.params.ls_function == "merit":
                 # Update best merit
                 self.best_phi[phi_improved & ~dones] = phi[phi_improved & ~dones]
 
@@ -212,7 +211,7 @@ class Sqp:
         all_dyn_viols = x_next - f(x_curr, u_curr, self.prob.dt)
 
         # Underactuation
-        max_uact_viols = torch.zeros(self.params.n_B)
+        max_uact_viols = torch.zeros(self.prob.n_batch)
         for k in range(self.horizon - 1):
             x0 = self.prob.states[k]
             u0 = self.prob.controls[k]
@@ -223,20 +222,20 @@ class Sqp:
                 index_mask = uact_inf_norm > max_uact_viols
                 max_uact_viols[index_mask] = uact_inf_norm[index_mask]
 
-        # terminate_Lx = max_Lx < self.params.eps
-        # terminate_Lu = max_Lu < self.params.eps
+        # terminate_Lx = max_Lx < self.params.sqp_eps
+        # terminate_Lu = max_Lu < self.params.sqp_eps
         # print("Max dyn viols: ", max_dyn_viols, ", ", max_uact_viols)
         self.iter_log["max_dyn_viol"] = torch.norm(all_dyn_viols, p=float("inf")).item()
         self.iter_log["max_uact_viol"] = torch.norm(
             max_uact_viols, p=float("inf")
         ).item()
 
-        terminate_Lx = inf_norm(Lx) < self.params.eps
-        terminate_Lu = inf_norm(Lu) < self.params.eps
+        terminate_Lx = inf_norm(Lx) < self.params.sqp_eps
+        terminate_Lu = inf_norm(Lu) < self.params.sqp_eps
         terminate_dyn_viols = (
-            torch.norm(all_dyn_viols, p=float("inf"), dim=[0, 2]) < self.params.eps
+            torch.norm(all_dyn_viols, p=float("inf"), dim=[0, 2]) < self.params.sqp_eps
         )
-        terminate_uact_viols = max_uact_viols < self.params.eps
+        terminate_uact_viols = max_uact_viols < self.params.sqp_eps
         return torch.stack(
             [
                 # terminate_Lx,
@@ -260,9 +259,9 @@ class Sqp:
         # J: total cost
         # dyn: ||dynamics violation||_inf
         # uact:  ||underactuation violation||_inf
-        J = torch.zeros((self.params.n_B))
-        dyn = torch.zeros((self.params.n_B))
-        uact = torch.zeros((self.params.n_B))
+        J = torch.zeros((self.prob.n_batch))
+        dyn = torch.zeros((self.prob.n_batch))
+        uact = torch.zeros((self.prob.n_batch))
         for k in range(self.horizon - 1):
             # Calculate total trajectory cost
             J += self.prob.l(k, x_cand[k], u_cand[k])
@@ -306,8 +305,8 @@ class Sqp:
     # Calculate Lagrangian gradients
     def calc_Lx_Lu(self):
         dt = self.prob.dt
-        Lx = torch.zeros((self.params.n_B, self.prob.nx))
-        Lu = torch.zeros((self.params.n_B, self.prob.nu))
+        Lx = torch.zeros((self.prob.n_batch, self.prob.nx))
+        Lu = torch.zeros((self.prob.n_batch, self.prob.nu))
         for k in range(self.horizon - 1):
             x = self.prob.states[k]
             u = self.prob.controls[k]

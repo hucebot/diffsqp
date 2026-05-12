@@ -2,44 +2,28 @@ import torch
 from torch import sin, cos
 
 from diffsqp.constraints import Constraint
+from diffsqp.dynamics.acrobot_dynamics import AcrobotParameters
 
 
 class AcrobotUnderactuation(Constraint):
-    def __init__(
-        self,
-        m1: float,
-        m2: float,
-        l1: float,
-        l2: float,
-        lc1: float,
-        lc2: float,
-        grav: float = 9.81,
-        I1=None,
-        I2=None,
-    ):
+    def __init__(self, params: AcrobotParameters):
         super().__init__(ng=1, nx=4, nu=2, type="equality")
-
-        self.m1 = m1
-        self.m2 = m2
-        self.l1 = l1
-        self.l2 = l2
-        self.lc1 = lc1
-        self.lc2 = lc2
-        self.grav = grav
-
-        self.I1 = I1 if I1 is not None else (self.m1 * self.l1**2) / 3.0
-        self.I2 = I2 if I1 is not None else (self.m2 * self.l2**2) / 3.0
+        self.p = params
+        if self.p.I1 is None:
+            self.p.I1 = (params.m1 * params.l1**2) / 3.0
+        if self.p.I2 is None:
+            self.p.I2 = (params.m2 * params.l2**2) / 3.0
 
     def g(self, x: torch.Tensor, u: torch.Tensor):
         nB = x.shape[0]
-        m1 = self.m1
-        m2 = self.m2
-        l1 = self.l1
-        lc1 = self.lc1
-        lc2 = self.lc2
-        grav = self.grav
-        I1 = self.I1
-        I2 = self.I2
+        m1 = self.p.m1
+        m2 = self.p.m2
+        l1 = self.p.l1
+        lc1 = self.p.lc1
+        lc2 = self.p.lc2
+        grav = self.p.grav
+        I1 = self.p.I1
+        I2 = self.p.I2
 
         th1 = x[:, 0:1]
         th2 = x[:, 1:2]
@@ -66,15 +50,15 @@ class AcrobotUnderactuation(Constraint):
         ng = self.ng
         nx = self.nx
 
-        m1 = self.m1
-        m2 = self.m2
-        l1 = self.l1
-        l2 = self.l2
-        lc1 = self.lc1
-        lc2 = self.lc2
-        grav = self.grav
-        I1 = self.I1
-        I2 = self.I2
+        m1 = self.p.m1
+        m2 = self.p.m2
+        l1 = self.p.l1
+        l2 = self.p.l2
+        lc1 = self.p.lc1
+        lc2 = self.p.lc2
+        grav = self.p.grav
+        I1 = self.p.I1
+        I2 = self.p.I2
 
         th1 = x[:, 0:1]
         th2 = x[:, 1:2]
@@ -122,15 +106,15 @@ class AcrobotUnderactuation(Constraint):
         ng = self.ng
         nu = self.nu
 
-        m1 = self.m1
-        m2 = self.m2
-        l1 = self.l1
-        l2 = self.l2
-        lc1 = self.lc1
-        lc2 = self.lc2
-        grav = self.grav
-        I1 = self.I1
-        I2 = self.I2
+        m1 = self.p.m1
+        m2 = self.p.m2
+        l1 = self.p.l1
+        l2 = self.p.l2
+        lc1 = self.p.lc1
+        lc2 = self.p.lc2
+        grav = self.p.grav
+        I1 = self.p.I1
+        I2 = self.p.I2
 
         th1 = x[:, 0:1]
         th2 = x[:, 1:2]

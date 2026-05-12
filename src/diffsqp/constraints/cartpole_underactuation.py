@@ -2,22 +2,20 @@ import torch
 from torch import sin, cos
 
 from diffsqp.constraints import Constraint
+from diffsqp.dynamics import CartPoleParameters
 
 
 class CartPoleUnderactuation(Constraint):
-    def __init__(self, mc: float, mp: float, lp: float, grav: float = 9.81):
+    def __init__(self, params: CartPoleParameters):
         super().__init__(ng=1, nx=4, nu=2, type="equality")
-        self.mc = mc
-        self.mp = mp
-        self.lp = lp
-        self.grav = grav
+        self.p = params
 
     def g(self, x: torch.Tensor, u: torch.Tensor):
         nB = x.shape[0]
-        mc = self.mc
-        mp = self.mp
-        lp = self.lp
-        grav = self.grav
+        mc = self.p.mc
+        mp = self.p.mp
+        lp = self.p.lp
+        grav = self.p.grav
 
         th = x[:, 1:2]
         dds = u[:, 0:1]
@@ -34,9 +32,9 @@ class CartPoleUnderactuation(Constraint):
         ng = self.ng
         nx = self.nx
 
-        mp = self.mp
-        lp = self.lp
-        grav = self.grav
+        mp = self.p.mp
+        lp = self.p.lp
+        grav = self.p.grav
         th = x[:, 1:2]
         dds = u[:, 0:1]
 
@@ -54,9 +52,9 @@ class CartPoleUnderactuation(Constraint):
         ng = self.ng
         nu = self.nu
 
-        mp = self.mp
-        lp = self.lp
-        grav = self.grav
+        mp = self.p.mp
+        lp = self.p.lp
+        grav = self.p.grav
         th = x[:, 1:2]
         sth = torch.sin(th)
         cth = torch.cos(th)

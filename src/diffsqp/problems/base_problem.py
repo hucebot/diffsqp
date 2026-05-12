@@ -9,6 +9,28 @@ from diffsqp.constraints import Constraint
 from diffsqp.utils.math import mv
 
 
+class ProblemParams:
+    def __init__(self, **args):
+        # self.system: str = args["name"]
+        self.inverse_dynamics: bool = args["inverse_dynamics"]
+        self.n_batch: int = args["n_batch"]
+        self.tf: float = args["tf"]
+        self.dt: float = args["dt"]
+        self.nx: int = len(args["q_w"])
+        self.nu: int = len(args["r_w"])
+        self.horizon = int(self.tf / self.dt)
+        # # Initial and final states
+        self.x_init = torch.tensor(args["x_init"]).repeat(self.n_batch, 1)
+        # Apply noise only to the first two dimensions (usually positions)
+        self.x_init[:, 0:2] += args["noise_std"] * torch.randn((self.n_batch, 2))
+        self.x_des = torch.tensor(args["x_des"]).repeat(self.n_batch, 1)
+
+        # # Cost weights
+        self.q_w = torch.tensor(args["q_w"])
+        self.r_w = torch.tensor(args["r_w"])
+        self.qf_w = torch.tensor(args["qf_w"])
+
+
 class Problem(ABC):
     """
     An abstract base class representing a Trajectory Optimization problem.
@@ -28,7 +50,7 @@ class Problem(ABC):
         ni (List[torch.Tensor]): Lagrange multipliers for general equality constraints.
     """
 
-    def __init__(self, horizon: int, dt: float, nB: int, nx: int, nu: int) -> None:
+    def __init__(self, params: ProblemParams) -> None:
         """
         Initializes the optimization problem buffers.
 
@@ -39,28 +61,29 @@ class Problem(ABC):
             nx (int): State dimension.
             nu (int): Control dimension.
         """
-        self.horizon = horizon
-        self.dt = dt
-        self.nx = nx
-        self.nu = nu
+        self.horizon = params.horizon
+        self.dt = params.dt
+        self.nx = params.nx
+        self.nu = params.nu
+        self.n_batch = params.n_batch
         self.costs: List[List[Cost]] = []
         self.dynamics: List[Dynamics] = []
         self.constraints: List[Constraints] = [None] * self.horizon
         self.states: List[torch.Tensor] = [
-            torch.zeros((nB, nx)) for _ in range(self.horizon)
+            torch.zeros((self.n_batch, self.nx)) for _ in range(self.horizon)
         ]
         self.controls: List[torch.Tensor] = [
-            torch.zeros((nB, nu)) for _ in range(self.horizon - 1)
+            torch.zeros((self.n_batch, self.nu)) for _ in range(self.horizon - 1)
         ]
         self.pi: List[torch.Tensor] = [
-            torch.zeros((nB, nx)) for _ in range(self.horizon)
+            torch.zeros((self.n_batch, self.nx)) for _ in range(self.horizon)
         ]
         self.ni: List[torch.Tensor] = [None for _ in range(self.horizon - 1)]
 
     # --- Lagrangian Calculation Methods ---
 
     def L(self):
-        L = torch.zeros((self.n_B))
+        L = torch.zeros((self.n_batch))
         for k in range(self.horizon - 1):
             x = self.states[k]
             u = self.controls[k]

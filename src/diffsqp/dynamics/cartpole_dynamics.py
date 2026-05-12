@@ -1,25 +1,41 @@
 import torch
 from torch import sin, cos
 
+from dataclasses import dataclass
+
 from diffsqp.dynamics import Dynamics
 
 
+class CartPoleParameters:
+    def __init__(self, **args):
+        self.name: str = args["name"]
+
+        self.n_x: int = args["n_x"]
+        self.n_q: int = args["n_q"]
+        self.n_v: int = args["n_v"]
+        self.n_j: int = args["n_j"]
+        self.n_u: int = args["n_u"]
+
+        self.mc: float = args["mc"]
+        self.mp: float = args["mp"]
+        self.lp: float = args["lp"]
+
+        self.grav: float = args["grav"]
+
+
 class CartPoleDynamics(Dynamics):
-    def __init__(self, mc: float, mp: float, lp: float, grav: float = 9.81):
+    def __init__(self, params: CartPoleParameters):
         super().__init__(nx=4, nu=1, nq=2, nv=2)
-        self.mc = mc
-        self.mp = mp
-        self.lp = lp
-        self.grav = grav
+        self.p = params
 
     def fc(self, x: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
         """
         Continuous time dynamics: x_dot = fc(x_k, u_k)
         """
-        mc = self.mc
-        mp = self.mp
-        lp = self.lp
-        grav = self.grav
+        mc = self.p.mc
+        mp = self.p.mp
+        lp = self.p.lp
+        grav = self.p.grav
 
         s = x[..., 0:1]
         th = x[..., 1:2]
@@ -45,10 +61,10 @@ class CartPoleDynamics(Dynamics):
         """
         n_B = x.shape[:-1]
 
-        mc = self.mc
-        mp = self.mp
-        lp = self.lp
-        grav = self.grav
+        mc = self.p.mc
+        mp = self.p.mp
+        lp = self.p.lp
+        grav = self.p.grav
 
         s = x[..., 0:1]
         th = x[..., 1:2]
@@ -112,10 +128,10 @@ class CartPoleDynamics(Dynamics):
         """
         n_B = x.shape[:-1]
 
-        mc = self.mc
-        mp = self.mp
-        lp = self.lp
-        grav = self.grav
+        mc = self.p.mc
+        mp = self.p.mp
+        lp = self.p.lp
+        grav = self.p.grav
 
         s = x[..., 0:1]
         th = x[..., 1:2]

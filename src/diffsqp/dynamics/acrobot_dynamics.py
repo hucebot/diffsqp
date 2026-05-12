@@ -1,48 +1,60 @@
 import torch
 from torch import sin, cos
 
+from dataclasses import dataclass
+
 from diffsqp.dynamics import Dynamics
 
 
+class AcrobotParameters:
+    def __init__(self, **args):
+        self.name: str = args["name"]
+
+        self.n_x: int = args["n_x"]
+        self.n_q: int = args["n_q"]
+        self.n_v: int = args["n_v"]
+        self.n_j: int = args["n_j"]
+        self.n_u: int = args["n_u"]
+
+        self.m1: float = args["m1"]
+        self.m2: float = args["m2"]
+        self.l1: float = args["l1"]
+        self.l2: float = args["l2"]
+        self.lc1: float = args["lc1"]
+        self.lc2: float = args["lc2"]
+        self.I1: float = (
+            args["I1"] if args["I1"] is not None else 1 / (3.0 * self.m1 * self.l1**2)
+        )
+        self.I2: float = (
+            args["I2"] if args["I2"] is not None else 1 / (3.0 * self.m2 * self.l2**2)
+        )
+
+        self.grav: float = args["grav"]
+
+
 class AcrobotDynamics(Dynamics):
-    def __init__(
-        self,
-        m1: float,
-        m2: float,
-        l1: float,
-        l2: float,
-        lc1: float,
-        lc2: float,
-        grav: float = 9.81,
-        I1=None,
-        I2=None,
-    ):
-        super().__init__(nx=4, nu=2, nq=2, nv=2)
+    def __init__(self, params: AcrobotParameters):
+        self.p = params
+        super().__init__(nx=self.p.n_x, nu=self.p.n_u, nq=self.p.n_q, nv=self.p.n_v)
 
-        self.m1 = m1
-        self.m2 = m2
-        self.l1 = l1
-        self.l2 = l2
-        self.lc1 = lc1
-        self.lc2 = lc2
-        self.grav = grav
-
-        self.I1 = I1 if I1 is not None else (self.m1 * self.l1**2) / 3.0
-        self.I2 = I2 if I1 is not None else (self.m2 * self.l2**2) / 3.0
+        if self.p.I1 is None:
+            self.p.I1 = (self.p.m1 * self.p.l1**2) / 3.0
+        if self.p.I2 is None:
+            self.p.I2 = (self.p.m2 * self.p.l2**2) / 3.0
 
     def fc(self, x: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
         """
         Continuous time dynamics: x_dot = fc(x_k, u_k)
         """
-        m1 = self.m1
-        m2 = self.m2
-        l1 = self.l1
-        l2 = self.l2
-        lc1 = self.lc1
-        lc2 = self.lc2
-        grav = self.grav
-        I1 = self.I1
-        I2 = self.I2
+        m1 = self.p.m1
+        m2 = self.p.m2
+        l1 = self.p.l1
+        l2 = self.p.l2
+        lc1 = self.p.lc1
+        lc2 = self.p.lc2
+        grav = self.p.grav
+        I1 = self.p.I1
+        I2 = self.p.I2
 
         th1 = x[..., 0:1]
         th2 = x[..., 1:2]
@@ -87,15 +99,15 @@ class AcrobotDynamics(Dynamics):
         """
         n_B = x.shape[:-1]
 
-        m1 = self.m1
-        m2 = self.m2
-        l1 = self.l1
-        l2 = self.l2
-        lc1 = self.lc1
-        lc2 = self.lc2
-        grav = self.grav
-        I1 = self.I1
-        I2 = self.I2
+        m1 = self.p.m1
+        m2 = self.p.m2
+        l1 = self.p.l1
+        l2 = self.p.l2
+        lc1 = self.p.lc1
+        lc2 = self.p.lc2
+        grav = self.p.grav
+        I1 = self.p.I1
+        I2 = self.p.I2
 
         th1 = x[..., 0:1]
         th2 = x[..., 1:2]
@@ -238,11 +250,11 @@ class AcrobotDynamics(Dynamics):
         """
         n_B = x.shape[:-1]
 
-        m2 = self.m2
-        l1 = self.l1
-        lc2 = self.lc2
-        I1 = self.I1
-        I2 = self.I2
+        m2 = self.p.m2
+        l1 = self.p.l1
+        lc2 = self.p.lc2
+        I1 = self.p.I1
+        I2 = self.p.I2
 
         th2 = x[..., 1:2]
         tau = u[..., 0:1]

@@ -1,0 +1,42 @@
+system:
+  name: acrobot
+
+  n_x: 4 # Number of state elements
+  n_q: 2 # Number of position elements in state
+  n_v: 2 # Number of velocity elements in state
+  n_j: 2 # Number of joints
+  n_u: 1 # Number of DoF
+
+  m1: 1.0
+  m2: 1.0
+  l1: 0.5
+  l2: 0.5
+  lc1: 0.5
+  lc2: 0.5
+  I1: null # Calculated at runtime
+  I2: null # Calculated at runtime
+  grav: 9.81
+
+problem:
+  inverse_dynamics: True
+  n_batch: 3 # batch size
+  dt: 0.01 # node dt
+  tf: 1.0 # total horizon time
+
+  # Initial and final states
+  # x_init: [0.0, 0.0, 0.0, 0.0]
+  x_init: [3.14159, 0.0, 0.0, 0.0]
+  x_des: [3.14159, 0.0, 0.0, 0.0]
+  noise_std: 0.2 # initial state noise std
+
+  # Cost weights
+  q_w: [1.0E-6, 1.0E-6, 1.0E-6, 1.0E-6]
+  r_w: [1.0E-1, 1.0E-1]
+  qf_w: [4.0E+8, 4.0E+8, 1.0E+5, 1.0E+5]
+
+solver:
+  # Solver parameters
+  sqp_max_iter: 500
+  sqp_eps: 1.0E-4
+  qp_solver: "lqr"
+  ls_function: "merit"

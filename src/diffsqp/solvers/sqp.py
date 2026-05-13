@@ -12,6 +12,7 @@ from dataclasses import dataclass
 @dataclass
 class SqpParams:
     sqp_max_iter: int
+    ls_max_iter: int
     sqp_eps: float
     qp_solver: str
     ls_function: str
@@ -19,7 +20,7 @@ class SqpParams:
 
 @dataclass
 class SqpIterationLog:
-    # QP stuff
+    # QP related
     qp_delta_x: List[torch.Tensor]
     qp_delta_u: List[torch.Tensor]
     qp_pi: List[torch.Tensor]
@@ -60,7 +61,7 @@ class Sqp:
             )
         elif self.params.ls_function == "merit":
             # Merit function
-            self.ls_mu = 1e6
+            self.ls_mu = 1.0
             self.best_phi = self.merit(self.prob.states, self.prob.controls)
 
         self.terminated = torch.zeros((self.prob.n_batch), dtype=torch.bool)
@@ -99,7 +100,6 @@ class Sqp:
 
             # Check termination
             if self.check_termination(delta_x_qp, delta_u_qp):
-                t_solve_end = time.time()
                 break
         print("SSQP Total Iterations: ", iter + 1)
         print(
@@ -108,6 +108,7 @@ class Sqp:
             "/",
             self.terminated.shape[0],
         )
+        t_solve_end = time.time()
 
         # Fill log
         self.iter_log["t_solve_s"] = t_solve_end - t_solve_start
@@ -128,9 +129,8 @@ class Sqp:
         alpha = torch.ones((self.prob.n_batch, 1))
         dones = self.terminated.clone()
         i = 0
-        while (not torch.all(dones)) and (i < sqp_max_iter):
+        while (not torch.all(dones)) and (i < self.params.ls_max_iter):
             i += 1
-            gamma = torch.zeros((self.prob.n_batch, 1))
 
             # Evaluate current alpha
             x_cand, u_cand = self.calc_cadidate_solutions(
@@ -155,6 +155,7 @@ class Sqp:
                 # Merit Function
                 phi = self.merit(x_cand, u_cand)
                 phi_improved = phi <= self.best_phi
+                self.best_phi[phi_improved] = phi[phi_improved]
                 update_mask = phi_improved & ~dones
 
             if update_mask.any():

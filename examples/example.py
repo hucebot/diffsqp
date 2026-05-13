@@ -9,7 +9,8 @@ import numpy as np
 from diffsqp.problems import Problem, ProblemParams
 from diffsqp.costs import LqrCost
 from diffsqp.solvers import Lqr
-from diffsqp.solvers import Sqp, SqpParams from diffsqp.dynamics import Dynamics, AcrobotDynamics, CartPoleDynamics
+from diffsqp.solvers import Sqp, SqpParams
+from diffsqp.dynamics import Dynamics, AcrobotDynamics, CartPoleDynamics
 from diffsqp.dynamics import AcrobotParameters, CartPoleParameters
 from diffsqp.constraints import AcrobotUnderactuation, CartPoleUnderactuation
 from diffsqp.utils.animate import AcrobotAnimator, CartPoleAnimator
@@ -73,7 +74,7 @@ for i in range(prob.horizon - 1):
     prob.states[i] = prob_params.x_init.clone()
     prob.costs.append([LqrCost(Q=Q, R=R)])
 # Set terminal cost
-prob.states[-1] = prob_params.x_des.clone()
+prob.states[-1] = prob_params.x_init.clone()
 prob.costs.append([LqrCost(Q=Qf, x_des=prob_params.x_des.clone())])
 
 # Constraints
@@ -90,12 +91,63 @@ solver = Sqp(prob, sqp_params)
 
 start = time.time()
 try:
-    solver.solve()
+    iter_log = solver.solve()
+    print("Max dynamics violation: ", iter_log["max_dyn_viol"])
+    print("Max uact violation: ", iter_log["max_uact_viol"])
 except KeyboardInterrupt:
     print("Keyboard  Interrupt")
 end = time.time()
 
+
 print("Time elapsed: ", end - start, " s.")
+
+
+import matplotlib.pyplot as plt
+
+
+def plot_states(states_list):
+    states_tensor = torch.stack(states_list)
+    first_batch = states_tensor[:, 0, :].detach().cpu().numpy()
+
+    horizon, n_x = first_batch.shape
+    time = range(horizon)
+
+    # 3. Plot each dimension of the state
+    for i in range(n_x):
+        plt.plot(time, first_batch[:, i], label=f"State $x_{{{i}}}$")
+
+    plt.xlabel("Time Step $k$")
+    plt.ylabel("Value")
+    plt.title("State Trajectory (First Batch)")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_controls(controls_list):
+    states_tensor = torch.stack(controls_list)
+    first_batch = states_tensor[:, 0, :].detach().cpu().numpy()
+
+    horizon, n_x = first_batch.shape
+    time = range(horizon)
+
+    # 3. Plot each dimension of the state
+    for i in range(n_x):
+        plt.plot(time, first_batch[:, i], label=f"State $x_{{{i}}}$")
+
+    plt.xlabel("Time Step $k$")
+    plt.ylabel("Value")
+    plt.title("State Trajectory (First Batch)")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    # plt.savefig("state_trajectory.png")
+    plt.show()
+
+
+# plot_states(prob.states)
+# plot_controls(prob.controls)
 
 # Animate:
 if sys_params.name == "acrobot":

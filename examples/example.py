@@ -35,9 +35,9 @@ args = parser.parse_args()
 
 print(f"Loading problem configuration from: {args.config}")
 cfg = load_config(args.config)
-print(f"Successfully loaded parameters. Starting solver...")
-
+print(f"Successfully loaded parameters:")
 sqp_params = SqpParams(**cfg["solver"])
+print(sqp_params)
 prob_params = ProblemParams(**cfg["problem"])
 
 if cfg["system"]["name"] == "acrobot":
@@ -63,6 +63,7 @@ elif cfg["system"]["name"] == "cartpole":
         dyn = CartPoleDynamics(sys_params)
 
 # Create problem
+print(f"Solving..")
 prob = Problem(prob_params)
 
 # Costs
@@ -91,13 +92,12 @@ solver = Sqp(prob, sqp_params)
 
 start = time.time()
 try:
-    iter_log = solver.solve()
-    print("Max dynamics violation: ", iter_log["max_dyn_viol"])
-    print("Max uact violation: ", iter_log["max_uact_viol"])
+    log = solver.solve()
 except KeyboardInterrupt:
     print("Keyboard  Interrupt")
 end = time.time()
 
+print(log)
 
 print("Time elapsed: ", end - start, " s.")
 

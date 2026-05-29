@@ -9,28 +9,62 @@ from diffsqp.solvers import Lqr, QP
 from dataclasses import dataclass
 
 
-@dataclass
 class SqpParams:
-    sqp_max_iter: int
-    ls_max_iter: int
-    sqp_eps: float
-    qp_solver: str
-    ls_function: str
+    def __init__(self, **args):
+        self.sqp_max_iter: int = args["sqp_max_iter"]
+        self.ls_max_iter: int = args["ls_max_iter"]
+        self.sqp_eps: float = args["sqp_eps"]
+        self.qp_solver: str = args["qp_solver"]
+        self.ls_function: str = args["ls_function"]
+
+    def __str__(self) -> str:
+        return (
+            f"=== SQP Parameters ===\n"
+            f"  QP Solver       : {self.qp_solver}\n"
+            f"  Line Search Fn  : {self.ls_function}\n"
+            f"  SQP Max Iter    : {self.sqp_max_iter}\n"
+            f"  Line Search Max : {self.ls_max_iter}\n"
+            f"  SQP Tolerance   : {self.sqp_eps:.2e}\n"
+            f"======================"
+        )
 
 
-@dataclass
-class SqpIterationLog:
-    # QP related
-    qp_delta_x: List[torch.Tensor]
-    qp_delta_u: List[torch.Tensor]
-    qp_pi: List[torch.Tensor]
-    qp_delta_nu: List[torch.Tensor]
+class SqpSolutionLog:
+    def __init__(self):
+        self.envs_terminated: int = 0
 
-    # Logging
-    sqp_iterations: int
-    termination_time_s: int
-    cuda_reserved_bytes: int
-    cuda_allocated_bytes: int
+        self.total_cost: float = 0.0
+        self.convergence_error: float = 0.0
+
+        self.solve_wall_time_s: int = 0
+        self.sqp_iterations: int = 0
+
+        self.termination_time_s: float = 0.0
+        self.ls_alphas: List[float] = []
+
+        # GPU related
+        self.cuda_reserved_bytes: int = 0
+        self.cuda_allocated_bytes: int = 0
+
+    def __str__(self) -> str:
+        cuda_res_mb = self.cuda_reserved_bytes / (1024**2)
+        cuda_alc_mb = self.cuda_allocated_bytes / (1024**2)
+        alphas_str = ", ".join([f"{a:.4f}" for a in self.ls_alphas[-5:]])
+        if len(self.ls_alphas) > 5:
+            alphas_str = f"... {alphas_str}"
+
+        return (
+            f"=== SQP Solution Log ===\n"
+            f"  Envs Terminated : {self.envs_terminated}\n"
+            f"  Iterations      : {self.sqp_iterations}\n"
+            f"  Total Cost      : {self.total_cost:.6f}\n"
+            f"  Conv. Error     : {self.convergence_error:.6e}\n"
+            f"  Solve Time      : {self.termination_time_s:.4f} s\n"
+            f"  Recent Alphas   : [{alphas_str}]\n"
+            f"  CUDA Allocated  : {cuda_alc_mb:.2f} MB\n"
+            f"  CUDA Reserved   : {cuda_res_mb:.2f} MB\n"
+            f"========================="
+        )
 
 
 ## What to keep as info:
@@ -66,19 +100,7 @@ class Sqp:
 
         self.terminated = torch.zeros((self.prob.n_batch), dtype=torch.bool)
 
-        self.iter_log = {
-            "nB": self.prob.n_batch,
-            "terminated": 0,
-            "ssqp_iterations": 0,
-            "t_solve_s": 0.0,
-            "cuda_reserved_bytes": 0,
-            "cuda_allocated_bytes": 0,
-            "t_qp_solve": [0.0] * self.params.sqp_max_iter,
-            "t_line_search": [0.0] * self.params.sqp_max_iter,
-            "line_search_iters": [0.0] * self.params.sqp_max_iter,
-            "max_dyn_viol": 0.0,
-            "max_uact_viol": 0.0,
-        }
+        self.log = SqpSolutionLog()
 
     def solve(self):
         # Solve for sqp_max_iter steps
@@ -86,38 +108,26 @@ class Sqp:
         for iter in range(self.params.sqp_max_iter):
             # Get LQR corrections
             # Perform ADMM step
-            start = time.time()
+            # TODO: Log QP solve time
             delta_x_qp, delta_u_qp, pi_qp, ni_qp = self.qp_solver.solve()
-            end = time.time()
-            t_qp_solve = end - start
-            self.iter_log["t_qp_solve"] = t_qp_solve
 
             # Line search
-            # TODO: Log ls time and total iters
-            alpha, dones, ls_iters = self.line_search(
-                delta_x_qp, delta_u_qp, pi_qp, ni_qp
-            )
+            # TODO: Log line search time and total iters
+            ls_iters, done = self.line_search(delta_x_qp, delta_u_qp, pi_qp, ni_qp)
 
             # Check termination
             if self.check_termination(delta_x_qp, delta_u_qp):
                 break
-        print("SSQP Total Iterations: ", iter + 1)
-        print(
-            "Terminated Environments: ",
-            torch.count_nonzero(self.terminated).item(),
-            "/",
-            self.terminated.shape[0],
-        )
         t_solve_end = time.time()
 
         # Fill log
-        self.iter_log["t_solve_s"] = t_solve_end - t_solve_start
-        self.iter_log["ssqp_iterations"] = iter + 1
-        self.iter_log["terminated"] = torch.count_nonzero(self.terminated).item()
+        self.log.solve_wall_time_s = t_solve_end - t_solve_start
+        self.log.sqp_iterations = iter + 1
+        self.log.envs_terminated = torch.count_nonzero(self.terminated).item()
         if torch.get_default_device() != "cpu":
-            self.iter_log["cuda_reserved_bytes"] = torch.cuda.memory_reserved(0)
-            self.iter_log["cuda_allocated_bytes"] = torch.cuda.memory_allocated(0)
-        return self.iter_log
+            self.log.cuda_reserved_bytes = torch.cuda.memory_reserved(0)
+            self.log.cuda_allocated_bytes = torch.cuda.memory_allocated(0)
+        return self.log
 
     def merit(self, x, u):
         J, dyn, uact = self.calc_metrics(x, u)
@@ -125,7 +135,32 @@ class Sqp:
         # dyn[idx] = uact[idx]
         return J + self.ls_mu * dyn + self.ls_mu * uact
 
-    def line_search(self, delta_x, delta_u, pi, ni, sqp_max_iter: float = 10):
+    def line_search_(self, x, u, delta_x, delta_u, mu, nu):
+        alpha = torch.ones((self.prob.n_batch, 1))
+        dones = self.terminated.clone()
+        iter = 0
+        while (not torch.all(dones)) and (iter < self.params.ls_max_iter):
+            iter += 1
+            x_, u_ = self.calc_cadidate_solutions(alpha, x, u, delta_x, delta_u)
+
+            if self.params.ls_function == "filter":
+                update_mask = self.evaluate_filter_(x_, u_, x, u)
+            elif self.params.ls_function == "merit":
+                update_mask = self.evaluate_merit_(x_, u_, x, u)
+
+            # Update relevant variables
+            if update_mask.any():
+                self.update_variables_(update_mask, x_, u_, mu, nu)
+                dones[update_mask] = True
+
+            # Decrease alpha
+            alpha[~update_mask] *= 0.5
+        return dones, iter
+
+    def normalize_hessians_(dones):
+        pass
+
+    def line_search(self, delta_x, delta_u, pi, ni):
         alpha = torch.ones((self.prob.n_batch, 1))
         dones = self.terminated.clone()
         i = 0
@@ -185,7 +220,7 @@ class Sqp:
                 alpha[failed_mask] *= 0.5
         # if not torch.all(dones):
         #     print("Line search failed: ", dones)
-        return alpha, dones, i
+        return i, torch.all(dones)
 
     def check_termination(self, delta_x, delta_u):
         """
@@ -226,10 +261,10 @@ class Sqp:
         # terminate_Lx = max_Lx < self.params.sqp_eps
         # terminate_Lu = max_Lu < self.params.sqp_eps
         # print("Max dyn viols: ", max_dyn_viols, ", ", max_uact_viols)
-        self.iter_log["max_dyn_viol"] = torch.norm(all_dyn_viols, p=float("inf")).item()
-        self.iter_log["max_uact_viol"] = torch.norm(
-            max_uact_viols, p=float("inf")
-        ).item()
+        # self.iter_log["max_dyn_viol"] = torch.norm(all_dyn_viols, p=float("inf")).item()
+        # self.iter_log["max_uact_viol"] = torch.norm(
+        #     max_uact_viols, p=float("inf")
+        # ).item()
 
         terminate_Lx = inf_norm(Lx) < self.params.sqp_eps
         terminate_Lu = inf_norm(Lu) < self.params.sqp_eps

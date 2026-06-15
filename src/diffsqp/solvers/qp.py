@@ -8,8 +8,8 @@ class QP:
         self.prob = prob
         self.horizon = self.prob.horizon
         self.n_B = self.prob.states[0].shape[0]
-        self.n_x = self.prob.nx
-        self.n_u = self.prob.nu
+        self.n_x = self.prob.n_x
+        self.n_u = self.prob.n_u
         self.nvars = (self.horizon - 1) * (self.n_x + self.n_u) + self.n_x
 
         self.delta_x = [None] * self.horizon

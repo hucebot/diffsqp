@@ -48,7 +48,7 @@ class AcrobotUnderactuation(UnderactuationConstraint):
     def hx(self, x: torch.Tensor, u: torch.Tensor):
         nB = x.shape[0]
         ng = self.ng
-        nx = self.nx
+        n_x = self.n_x
 
         m1 = self.p.m1
         m2 = self.p.m2

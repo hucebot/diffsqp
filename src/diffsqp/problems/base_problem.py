@@ -16,8 +16,8 @@ class ProblemParams:
         self.n_batch: int = args["n_batch"]
         self.tf: float = args["tf"]
         self.dt: float = args["dt"]
-        self.nx: int = len(args["q_w"])
-        self.nu: int = len(args["r_w"])
+        self.n_x: int = len(args["q_w"])
+        self.n_u: int = len(args["r_w"])
         self.horizon = int(self.tf / self.dt)
         # # Initial and final states
         self.x_init = torch.tensor(args["x_init"]).repeat(self.n_batch, 1)
@@ -38,15 +38,15 @@ class Problem(ABC):
     Attributes:
         horizon (int): The total number of time steps (T).
         dt (float): The integration time step.
-        nx (int): Dimension of the state vector.
-        nu (int): Dimension of the control vector.
+        n_x (int): Dimension of the state vector.
+        n_u (int): Dimension of the control vector.
         costs (List[List[Cost]]): A list of length `horizon`, where each element
             is a list of Cost objects active at that stage.
         dynamics (Dynamics): The dynamics model.
         underactuation (Constraints): The underactuation equality constraints.
         constraints (List[Constraints]): A list of constraint objects for each stage.
-        states (List[torch.Tensor]): The current state trajectory [nB x nx].
-        controls (List[torch.Tensor]): The current control trajectory [nB x nu].
+        states (List[torch.Tensor]): The current state trajectory [nB x n_x].
+        controls (List[torch.Tensor]): The current control trajectory [nB x n_u].
         pi (List[torch.Tensor]): Lagrange multipliers for dynamics (equality) constraints.
         ni (List[torch.Tensor]): Lagrange multipliers for general equality constraints.
     """
@@ -59,28 +59,28 @@ class Problem(ABC):
             horizon (int): Horizon length.
             dt (float): Integration dt.
             nB (int): Batch size for parallel trajectory optimization.
-            nx (int): State dimension.
-            nu (int): Control dimension.
+            n_x (int): State dimension.
+            n_u (int): Control dimension.
         """
         self.horizon = params.horizon
         self.dt = params.dt
-        self.nx = params.nx
-        self.nu = params.nu
+        self.n_x = params.n_x
+        self.n_u = params.n_u
         self.n_batch = params.n_batch
         self.costs: List[List[Cost]] = []
         self.dynamics: Dynamics = None
         self.underactuation: UnderactuationConstraint = None
         self.constraints: List[GenericConstraint] = [None] * self.horizon
         self.states: List[torch.Tensor] = [
-            torch.zeros((self.n_batch, self.nx)) for _ in range(self.horizon)
+            torch.zeros((self.n_batch, self.n_x)) for _ in range(self.horizon)
         ]
         self.controls: List[torch.Tensor] = [
-            torch.zeros((self.n_batch, self.nu)) for _ in range(self.horizon - 1)
+            torch.zeros((self.n_batch, self.n_u)) for _ in range(self.horizon - 1)
         ]
-        self.pi: List[torch.Tensor] = [
-            torch.zeros((self.n_batch, self.nx)) for _ in range(self.horizon)
+        self.mu: List[torch.Tensor] = [
+            torch.zeros((self.n_batch, self.n_x)) for _ in range(self.horizon)
         ]
-        self.ni: List[torch.Tensor] = [None for _ in range(self.horizon - 1)]
+        self.nu: List[torch.Tensor] = [None for _ in range(self.horizon - 1)]
 
     # --- Lagrangian Calculation Methods ---
 
@@ -110,8 +110,8 @@ class Problem(ABC):
 
         Args:
             stage_idx: The current time step index.
-            x: State tensor [nB x nx].
-            u: Control tensor [nB x nu]. Optional for terminal stage.
+            x: State tensor [nB x n_x].
+            u: Control tensor [nB x n_u]. Optional for terminal stage.
 
         Returns:
             Total scalar cost per batch [nB].

@@ -73,7 +73,7 @@ class Lqr:
 
     def forward_pass_(self):
         # TODO: Add initial state optimization as an option
-        nx = self.prob.nx
+        nx = self.prob.n_x
         self.delta_x[0] = torch.zeros([self.nB, nx])
         for i in range(self.horizon - 1):
             x_lin = self.prob.states[i]
@@ -165,10 +165,10 @@ class Lqr:
 
         # Sanity checks
         # nB = self.nB
-        # nx = self.prob.nx
-        # nu = self.prob.nu
-        # assert delta_x.shape == torch.Size([nB, nx])
-        # assert delta_u.shape == torch.Size([nB, nu])
+        # n_x = self.prob.n_x
+        # n_u = self.prob.n_u
+        # assert delta_x.shape == torch.Size([nB, n_x])
+        # assert delta_u.shape == torch.Size([nB, n_u])
 
         return x_next, u, pi, nu
 

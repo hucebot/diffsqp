@@ -33,8 +33,8 @@ class SqpSolutionLog:
     def __init__(self):
         self.envs_terminated: int = 0
 
-        self.total_cost: float = 0.0
-        self.convergence_error: float = 0.0
+        self.total_cost: List[float] = []
+        self.convergence_error: List[float] = []
 
         self.solve_wall_time_s: int = 0
         self.sqp_iterations: int = 0
@@ -49,20 +49,26 @@ class SqpSolutionLog:
     def __str__(self) -> str:
         cuda_res_mb = self.cuda_reserved_bytes / (1024**2)
         cuda_alc_mb = self.cuda_allocated_bytes / (1024**2)
+        cost_str = ", ".join([f"{a:.4f}" for a in self.total_cost[-5:]])
+        if len(self.total_cost) > 5:
+            cost_str = f"... {cost_str}"
+        conv_error_str = ", ".join([f"{a:.5f}" for a in self.convergence_error[-5:]])
+        if len(self.convergence_error) > 5:
+            conv_error_str = f"... {conv_error_str}"
         alphas_str = ", ".join([f"{a:.4f}" for a in self.ls_alphas[-5:]])
         if len(self.ls_alphas) > 5:
             alphas_str = f"... {alphas_str}"
 
         return (
             f"=== SQP Solution Log ===\n"
-            f"  Envs Terminated : {self.envs_terminated}\n"
-            f"  Iterations      : {self.sqp_iterations}\n"
-            f"  Total Cost      : {self.total_cost:.6f}\n"
-            f"  Conv. Error     : {self.convergence_error:.6e}\n"
-            f"  Solve Time      : {self.termination_time_s:.4f} s\n"
-            f"  Recent Alphas   : [{alphas_str}]\n"
-            f"  CUDA Allocated  : {cuda_alc_mb:.2f} MB\n"
-            f"  CUDA Reserved   : {cuda_res_mb:.2f} MB\n"
+            f"  Envs Terminated    : {self.envs_terminated}\n"
+            f"  Iterations         : {self.sqp_iterations}\n"
+            f"  Total Cost         : [{cost_str}]\n"
+            f"  Conv. Error        : [{conv_error_str}]\n"
+            f"  Solve Time         : {self.termination_time_s:.4f} s\n"
+            f"  Line Search Alphas : [{alphas_str}]\n"
+            f"  CUDA Allocated     : {cuda_alc_mb:.2f} MB\n"
+            f"  CUDA Reserved      :  {cuda_res_mb:.2f} MB\n"
             f"========================="
         )
 
@@ -132,6 +138,7 @@ class Sqp:
         self.log.solve_wall_time_s = t_solve_end - t_solve_start
         self.log.sqp_iterations = iter + 1
         self.log.envs_terminated = torch.count_nonzero(self.terminated).item()
+        self.log.total_cost = self.best_cost.tolist()
         if torch.get_default_device() != "cpu":
             self.log.cuda_reserved_bytes = torch.cuda.memory_reserved(0)
             self.log.cuda_allocated_bytes = torch.cuda.memory_allocated(0)
@@ -228,6 +235,10 @@ class Sqp:
         # terminate_Lx = inf_norm(Lx) < self.params.sqp_eps
         # terminate_Lu = inf_norm(Lu) < self.params.sqp_eps
         terminate_constraints = convergence_error < self.params.sqp_eps
+
+        # Logging
+        self.log.convergence_error = convergence_error
+
         return terminate_constraints
 
     def calc_cadidate_solutions_(self, alpha, x, u, delta_x, delta_u):

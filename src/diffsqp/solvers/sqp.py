@@ -12,6 +12,7 @@ from dataclasses import dataclass
 class SqpParams:
     def __init__(self, **args):
         self.sqp_max_iter: int = args["sqp_max_iter"]
+        self.merit_mu: float = args["merit_mu"]
         self.ls_max_iter: int = args["ls_max_iter"]
         self.sqp_eps: float = args["sqp_eps"]
         self.qp_solver: str = args["qp_solver"]
@@ -99,7 +100,7 @@ class Sqp:
         )
         if self.params.ls_function == "merit":
             # Merit function
-            self.ls_mu = 1.0
+            self.merit_mu = self.params.merit_mu
             self.best_phi = self.merit_(
                 self.best_cost, self.best_dyn_inf, self.best_uact_inf
             )
@@ -113,8 +114,8 @@ class Sqp:
         t_solve_start = time.time()
         for iter in range(self.params.sqp_max_iter):
             # Get LQR corrections
-            # Perform ADMM step
             # TODO: Log QP solve time
+            # Perform ADMM step
             delta_x_qp, delta_u_qp, pi_qp, ni_qp = self.qp_solver.solve()
 
             # Line search
@@ -157,7 +158,8 @@ class Sqp:
             if self.params.ls_function == "filter":
                 update_mask = self.evaluate_filter_(cost, dyn_inf, uact_inf)
             elif self.params.ls_function == "merit":
-                update_mask = self.evaluate_merit_(cost, dyn_inf, uact_inf)
+                phi = self.merit_(cost, dyn_inf, uact_inf)
+                update_mask = self.evaluate_merit_(phi)
 
             update_mask = update_mask & ~dones
             # Update relevant variables
@@ -171,7 +173,7 @@ class Sqp:
             self.best_dyn_inf[update_mask] = dyn_inf[update_mask]
             self.best_uact_inf[update_mask] = uact_inf[update_mask]
             if self.params.ls_function == "merit":
-                self.best_phi[phi_improved & ~dones] = phi[phi_improved & ~dones]
+                self.best_phi[update_mask] = phi[update_mask]
 
             # Decrease alpha
             alpha[~dones] *= 0.5
@@ -183,12 +185,11 @@ class Sqp:
         uact_improved = uact_inf < self.best_uact_inf
         return cost_improved | dyn_inf_improved | uact_improved
 
-    def evaluate_merit_(self, cost, dyn_inf, uact_inf):
-        phi = self.merit_(cost, dyn_inf, uact_inf)
+    def evaluate_merit_(self, phi):
         return phi < self.best_phi
 
     def merit_(self, cost, dyn_inf, uact_inf):
-        return cost + self.ls_mu * torch.maximum(dyn_inf, uact_inf)
+        return cost + self.merit_mu * torch.maximum(dyn_inf, uact_inf)
 
     def update_variables_(self, update_mask, x_, u_, mu_, nu_):
         for k in range(self.horizon - 1):

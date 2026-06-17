@@ -15,3 +15,7 @@ wheels/
 *.png
 *.pdf
 *.mp4
+
+# Experiment results
+*.json
+*.pt

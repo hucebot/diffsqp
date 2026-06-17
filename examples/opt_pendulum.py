@@ -1,41 +1,38 @@
 import torch
 
 from diffsqp.problems import Problem
-from diffsqp.costs import LqrCost, TerminalCost
+from diffsqp.costs import LqrCost
 from diffsqp.dynamics import PendulumDynamics
 from diffsqp.solvers import Lqr
-from diffsqp.solvers import Admm
-from diffsqp.solvers import Ssqp
+from diffsqp.solvers import Sqp, SqpParams
 
 # torch.set_default_device("cuda")
 
 horizon = 30
 dt = 0.05
-n_batch = 3
-n_state = 2
-n_ctrl = 1
-x_des = torch.tensor([torch.pi, 0.0]).repeat(n_batch, 1)
+nB = 3
+nx = 2
+nu = 1
+x_des = torch.tensor([torch.pi, 0.0]).repeat(nB, 1)
 
-prob = Problem(horizon, dt, n_state, n_ctrl)
+prob = Problem(horizon, dt, nB, nx, nu)
 
 dyn = PendulumDynamics(m=1.0, l=1.0, b=0.2, grav=9.81)
-Q = 1e-5 * torch.eye(n_state).repeat(n_batch, 1, 1)
-R = 1e-3 * torch.eye(n_ctrl).repeat(n_batch, 1, 1)
-cost = LqrCost(Q, R)
+Q = 1e-5 * torch.eye(nx).repeat(nB, 1, 1)
+R = 1e-3 * torch.eye(nu).repeat(nB, 1, 1)
 
-Qf = 1e6 * torch.eye(n_state).repeat(n_batch, 1, 1)
-final_cost = TerminalCost(Qf, x_des)
+Qf = 1e6 * torch.eye(nx).repeat(nB, 1, 1)
 
 # Set stage cost and constraints
 for i in range(horizon - 1):
-    prob.states.append(torch.zeros((n_batch, n_state)))
-    prob.controls.append(torch.zeros((n_batch, n_ctrl)))
-    prob.costs.append(cost)
-    prob.stage_dynamics.append(dyn)
+    prob.states[i] = torch.zeros((nB, nx))
+    prob.costs.append([LqrCost(Q, R)])
+    prob.dynamics.append(dyn)
+
 # Set terminal cost
-# prob.states.append(torch.zeros((n_batch, n_state)))
-prob.states.append(x_des)
-prob.costs.append(final_cost)
+# prob.states.append(torch.zeros((nB, nx)))
+prob.states[-1] = x_des.clone()
+prob.costs.append([LqrCost(Q=Qf, x_des=x_des)])
 
 # Create solver object
 # solver = Lqr(prob)
@@ -44,7 +41,8 @@ prob.costs.append(final_cost)
 # solver = Admm(prob)
 # solver.step()
 
-solver = Ssqp(prob)
+sqp_params = SqpParams(qp_solver="lqr", n_B=n_B, max_iter=500, eps=1e-4)
+solver = Sqp(prob, sqp_params)
 
 solver.solve()
 
@@ -52,7 +50,7 @@ import matplotlib.pyplot as plt
 
 
 def plot_states(states_list):
-    # 1. Stack the list of tensors into one tensor: (horizon, n_batch, n_x)
+    # 1. Stack the list of tensors into one tensor: (horizon, nB, n_x)
     states_tensor = torch.stack(states_list)
 
     # 2. Extract the first batch (index 0) and convert to numpy

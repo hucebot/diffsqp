@@ -6,9 +6,9 @@ def test_cost_derivatives(cost: Cost):
     # Helper to compute Jacobian of a gradient w.r.t a variable
     def get_jacobian(grad, var):
         # Flattens the gradient and variable to compute a standard Jacobian matrix
-        batch_size = grad.shape[0]
-        grad_flat = grad.view(batch_size, -1)
-        var_flat = var.view(batch_size, -1)
+        nB = grad.shape[0]
+        grad_flat = grad.view(nB, -1)
+        var_flat = var.view(nB, -1)
 
         jac = []
         for i in range(grad_flat.shape[1]):
@@ -23,13 +23,13 @@ def test_cost_derivatives(cost: Cost):
                 allow_unused=True,
             )[0]
             if j_col is None:
-                j_col = torch.zeros((batch_size, 1, var.shape[1]))
-            jac.append(j_col.view(batch_size, 1, -1))
+                j_col = torch.zeros((nB, 1, var.shape[1]))
+            jac.append(j_col.view(nB, 1, -1))
         return torch.cat(jac, dim=1)
 
     # Create random inputs with gradients enabled
-    x = torch.randn(n_batch, n_state, requires_grad=True)
-    u = torch.randn(n_batch, n_ctrl, requires_grad=True)
+    x = torch.randn(nB, nx, requires_grad=True)
+    u = torch.randn(nB, nu, requires_grad=True)
 
     # Compute analytical values from your class
     lx_analytic = cost.lx(x, u)
@@ -53,13 +53,13 @@ def test_cost_derivatives(cost: Cost):
     lux_numeric = get_jacobian(u.grad, x)
 
     # Assert shapes
-    assert cost.l(x, u).shape == (n_batch,)
-    assert lx_analytic.shape == (n_batch, n_state)
-    assert lu_analytic.shape == (n_batch, n_ctrl)
-    assert lxx_analytic.shape == (n_batch, n_state, n_state)
-    assert luu_analytic.shape == (n_batch, n_ctrl, n_ctrl)
-    assert lxu_analytic.shape == (n_batch, n_state, n_ctrl)
-    assert lux_analytic.shape == (n_batch, n_ctrl, n_state)
+    assert cost.l(x, u).shape == (nB,)
+    assert lx_analytic.shape == (nB, nx)
+    assert lu_analytic.shape == (nB, nu)
+    assert lxx_analytic.shape == (nB, nx, nx)
+    assert luu_analytic.shape == (nB, nu, nu)
+    assert lxu_analytic.shape == (nB, nx, nu)
+    assert lux_analytic.shape == (nB, nu, nx)
 
     # Final values
     assert torch.allclose(lx_analytic, x.grad)
@@ -72,13 +72,13 @@ def test_cost_derivatives(cost: Cost):
 
 
 if __name__ == "__main__":
-    n_batch = 2
-    n_state = 3
-    n_ctrl = 2
-    x_des = torch.randn((n_batch, n_state))
-    u_des = torch.randn((n_batch, n_ctrl))
-    Q = torch.rand(n_batch, n_state, 1) * torch.eye(n_state).repeat(n_batch, 1, 1)
-    R = torch.rand(n_batch, n_ctrl, 1) * torch.eye(n_ctrl).repeat(n_batch, 1, 1)
+    nB = 2
+    nx = 3
+    nu = 2
+    x_des = torch.randn((nB, nx))
+    u_des = torch.randn((nB, nu))
+    Q = torch.rand(nB, nx, 1) * torch.eye(nx).repeat(nB, 1, 1)
+    R = torch.rand(nB, nu, 1) * torch.eye(nu).repeat(nB, 1, 1)
 
     cost = LqrCost(Q, R, x_des, u_des)
 

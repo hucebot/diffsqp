@@ -5,7 +5,8 @@ from diffsqp.utils.math import mm, mv, inf_norm
 from typing import List
 
 from diffsqp.problems import Problem, ProblemParameters
-from diffsqp.solvers import Lqr, QP
+from diffsqp.solvers import QP
+from diffsqp.solvers import lqr_forward_pass, lqr_backward_pass
 from dataclasses import dataclass
 from diffsqp.types import Trajectory, QpParameters
 
@@ -85,6 +86,62 @@ class SqpSolutionLog:
 # Total SQP iterations
 
 
+def get_linearized_matrices(prob: Problem, trajectory: Trajectory):
+    n_batch = prob.n_batch
+    horizon = prob.horizon
+    n_x, n_u = prob.n_x, prob.n_u
+    n_h = prob.n_h
+
+    Q = torch.zeros((n_batch, horizon, n_x, n_x))
+    q = torch.zeros((n_batch, horizon, n_x))
+    R = torch.zeros((n_batch, horizon - 1, n_u, n_u))
+    r = torch.zeros((n_batch, horizon - 1, n_u))
+    S = torch.zeros((n_batch, horizon - 1, n_u, n_x))
+
+    A = torch.zeros((n_batch, horizon - 1, n_x, n_x))
+    B = torch.zeros((n_batch, horizon - 1, n_x, n_u))
+    b = torch.zeros((n_batch, horizon - 1, n_x))
+
+    C = None
+    D = None
+    d = None
+    if prob.underactuation is not None:
+        n_h = prob.n_h
+        C = torch.zeros((n_batch, horizon - 1, n_h, n_x))
+        D = torch.zeros((n_batch, horizon - 1, n_h, n_u))
+        d = torch.zeros((n_batch, horizon - 1, n_h))
+
+    # Fill matrices
+    for i in range(horizon - 1):
+        x_lin, u_lin, x_next = (
+            trajectory.x[:, i],
+            trajectory.u[:, i],
+            trajectory.x[:, i + 1],
+        )
+
+        A[:, i] = prob.dynamics.fx(x_lin, u_lin, prob.dt)
+        B[:, i] = prob.dynamics.fu(x_lin, u_lin, prob.dt)
+        b[:, i] = prob.dynamics.f(x_lin, u_lin, prob.dt) - x_next
+
+        Q[:, i] = prob.lxx(i, x_lin, u_lin)
+        q[:, i] = prob.lx(i, x_lin, u_lin)
+        R[:, i] = prob.luu(i, x_lin, u_lin)
+        r[:, i] = prob.lu(i, x_lin, u_lin)
+        S[:, i] = prob.lux(i, x_lin, u_lin)
+
+        # Underactuation augmentation
+        if prob.underactuation is not None:
+            C[:, i] = prob.underactuation.hx(x_lin, u_lin)
+            D[:, i] = prob.underactuation.hu(x_lin, u_lin)
+            d[:, i] = prob.underactuation.h(x_lin, u_lin)
+
+    x_F = trajectory.x[:, -1]
+    Q[:, -1] = prob.lxx(-1, x_F)
+    q[:, -1] = prob.lx(-1, x_F)
+
+    return QpParameters(Q=Q, q=q, R=R, r=r, S=S, A=A, B=B, b=b, C=C, D=D, d=d)
+
+
 class Sqp:
     def __init__(
         self,
@@ -96,12 +153,7 @@ class Sqp:
         self.params = params
         self.horizon = self.prob.horizon
 
-        # self.admm_solver = Admm(self.prob, qp_solver)
-        self.qp_solver = None
-        if self.params.qp_solver == "lqr":
-            self.qp_solver = Lqr(prob)
-        elif self.params.qp_solver == "qp":
-            self.qp_solver = QP(prob)
+        self.current_guess = init_guess
 
         self.best_cost, self.best_constr_inf = self.calc_metrics_(
             self.current_guess.x,
@@ -127,7 +179,12 @@ class Sqp:
             # Get LQR corrections
             # TODO: Log QP solve time
             # Perform ADMM step
-            dx, du, mu_, nu_ = self.qp_solver.solve(self.current_guess)
+            mat = get_linearized_matrices(self.prob, self.current_guess)
+            # dx, du, mu_, nu_ = self.qp_solver.solve(self.current_guess, mat)
+            K, k, P, p = lqr_backward_pass(self.prob, mat)
+            dx, du, mu_, nu_ = lqr_forward_pass(
+                self.prob, K, k, P, p, mat.A, mat.B, mat.b
+            )
 
             # Line search
             # TODO: Log line search time

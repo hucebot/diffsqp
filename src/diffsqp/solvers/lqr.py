@@ -2,201 +2,156 @@ import torch
 
 from diffsqp.problems import Problem
 from diffsqp.utils.math import mm, mv, tran
+from diffsqp.types import Trajectory, QpParameters, QpSolution
 
 
-class Lqr:
-    def __init__(self, prob: Problem) -> None:
-        self.prob = prob
-        self.horizon = self.prob.horizon
-        self.nB = self.prob.states[0].shape[0]
+def lqr_backward_pass(problem: Problem, matrices: QpParameters):
+    batch_size = problem.n_batch
+    horizon = problem.horizon
+    n_x = problem.n_x
+    n_u = problem.n_u
+    n_h = problem.n_h
 
-        self.A = [None] * (self.horizon - 1)
-        self.B = [None] * (self.horizon - 1)
-        self.b = [None] * (self.horizon - 1)
+    K = torch.zeros((batch_size, horizon - 1, n_u + n_h, n_x))
+    k = torch.zeros((batch_size, horizon - 1, n_u + n_h))
 
-        self.K = [None] * (self.horizon - 1)
-        self.k = [None] * (self.horizon - 1)
+    P = torch.zeros((batch_size, horizon, n_x, n_x))
+    p = torch.zeros((batch_size, horizon, n_x))
 
-        self.P = [None] * self.horizon
-        self.p = [None] * self.horizon
+    P[:, -1], p[:, -1] = matrices.Q[:, -1], matrices.q[:, -1]
 
-        self.delta_x = [None] * self.horizon
-        self.delta_u = [None] * (self.horizon - 1)
-        # Lagrange multipliers of the actuation part
-        self.mu = [None] * (self.horizon)
-        # Lagrange multipliers of the underactuation part
-        self.nu = [None] * (self.horizon - 1)
+    for i in reversed(range(horizon - 1)):
+        Q_i, q_i, R_i, r_i, S_i = (
+            matrices.Q[:, i],
+            matrices.q[:, i],
+            matrices.R[:, i],
+            matrices.r[:, i],
+            matrices.S[:, i],
+        )
 
-    def solve(self):
-        # TODO: Time these
-        self.backward_pass_()
-        self.forward_pass_()
+        A_i, B_i, b_i = matrices.A[:, i], matrices.B[:, i], matrices.b[:, i]
 
-        # Return results
-        return self.delta_x, self.delta_u, self.mu, self.nu
+        C_i, D_i, d_i = None, None, None
+        if problem.inverse_dynamics:
+            C_i, D_i, d_i = matrices.C[:, i], matrices.D[:, i], matrices.d[:, i]
 
-    def backward_pass_(self):
-        x_N = self.prob.states[self.horizon - 1]
-        self.P[-1], self.p[-1] = self.calc_final_cost_terms_(x_N)
+        (
+            K[:, i],
+            k[:, i],
+            P[:, i],
+            p[:, i],
+        ) = lqr_step_backward_(
+            Q=Q_i,
+            q=q_i,
+            R=R_i,
+            r=r_i,
+            S=S_i,
+            P_next=P[:, i + 1],
+            p_next=p[:, i + 1],
+            A=A_i,
+            B=B_i,
+            b=b_i,
+            C=C_i,
+            D=D_i,
+            d=d_i,
+        )
 
-        for i in range(self.horizon - 2, -1, -1):
-            x_lin = self.prob.states[i]
-            u_lin = self.prob.controls[i]
-            x_next = self.prob.states[i + 1]
+    return K, k, P, p
 
-            Q, R, S, q, r = self.calc_linearized_cost_terms_(i, x_lin, u_lin)
-            self.A[i], self.B[i], self.b[i] = self.calc_linearized_dynamics_terms_(
-                x_lin, u_lin, x_next, self.prob.dynamics
-            )
-            C, D, e = self.calc_linearized_underactuation_terms_(x_lin, u_lin)
 
-            (
-                self.K[i],
-                self.k[i],
-                self.P[i],
-                self.p[i],
-            ) = self.step_backward_(
-                Q=Q,
-                q=q,
-                R=R,
-                r=r,
-                S=S,
-                P_next=self.P[i + 1],
-                p_next=self.p[i + 1],
-                A=self.A[i],
-                B=self.B[i],
-                b=self.b[i],
-                C=C,
-                D=D,
-                d=e,
-            )
+def lqr_forward_pass(problem: Problem, K, k, P, p, A, B, b):
+    # TODO: Add initial state optimization as an option
+    batch_size = problem.n_batch
+    horizon = problem.horizon
+    n_x = problem.n_x
+    n_u = problem.n_u
+    n_h = problem.n_h
 
-    def forward_pass_(self):
-        # TODO: Add initial state optimization as an option
-        nx = self.prob.n_x
-        self.delta_x[0] = torch.zeros([self.nB, nx])
-        for i in range(self.horizon - 1):
-            x_lin = self.prob.states[i]
-            u_lin = self.prob.controls[i]
-            x_next = self.prob.states[i + 1]
+    dx = torch.zeros((batch_size, horizon, n_x))
+    du = torch.zeros((batch_size, horizon - 1, n_u))
+    # Lagrange multipliers of the actuation part
+    mu = torch.zeros((batch_size, horizon, n_x))
+    # Lagrange multipliers of the underactuation part
+    nu = torch.zeros((batch_size, horizon - 1, n_h))
 
-            delta_x0 = self.delta_x[i]
+    for i in range(horizon - 1):
+        dx0 = dx[:, i]
 
-            (
-                self.delta_x[i + 1],
-                self.delta_u[i],
-                self.mu[i + 1],
-                self.nu[i],
-            ) = self.step_forward_(
-                x=delta_x0,
-                K=self.K[i],
-                k=self.k[i],
-                P_next=self.P[i + 1],
-                p_next=self.p[i + 1],
-                A=self.A[i],
-                B=self.B[i],
-                b=self.b[i],
-            )
+        A_i, B_i, b_i = A[:, i], B[:, i], b[:, i]
 
-    def step_backward_(
-        self, Q, q, R, r, S, P_next, p_next, A, B, b, C=None, D=None, d=None
-    ):
-        # Create Q_, q_, R_, r_, S_
-        # Pre-transpose matrices
-        AT = tran(A)
-        BT = tran(B)
-        ST = tran(S)
+        K_i, k_i = K[:, i], k[:, i]
 
-        # cache term to reuse in the calculations
-        l = mv(P_next, b) + p_next
+        (
+            dx[:, i + 1],
+            du[:, i],
+            mu[:, i + 1],
+            nu[:, i],
+        ) = lqr_step_forward_(
+            x=dx0,
+            K=K_i,
+            k=k_i,
+            P_next=P[:, i + 1],
+            p_next=p[:, i + 1],
+            A=A_i,
+            B=B_i,
+            b=b_i,
+        )
 
-        ## TODO: Optimize these with einsum for quadratics
-        Q_ = Q + mm(AT, mm(P_next, A))
-        q_ = q + mv(AT, l)
-        R_ = R + mm(BT, mm(P_next, B))
-        r_ = r + mv(BT, l)
-        S_ = S + mm(BT, mm(P_next, A))
+    return QpSolution(dx=dx, du=du, mu=mu, nu=nu, lam=None)
 
-        if C is not None:
-            n_u = R_.shape[-2]
-            n_g = D.shape[-2]
-            dim = n_u + n_g
 
-            R_ext = torch.zeros((*R_.shape[:-2], dim, dim))
-            R_ext[..., :n_u, :n_u] = R_
-            R_ext[..., n_u:, :n_u] = D
-            R_ext[..., :n_u, n_u:] = D.transpose(-2, -1)
-            R_ = R_ext
+def lqr_step_backward_(Q, q, R, r, S, P_next, p_next, A, B, b, C=None, D=None, d=None):
+    # Create Q_, q_, R_, r_, S_
+    # Pre-transpose matrices
+    AT = tran(A)
+    BT = tran(B)
+    ST = tran(S)
 
-            r_ = torch.cat([r_, d], dim=-1)
+    # cache term to reuse in the calculations
+    l = mv(P_next, b) + p_next
 
-            S_ = torch.cat([S_, C], dim=-2)
-        S_T = tran(S_)
+    ## TODO: Optimize these with einsum for quadratics
+    Q_ = Q + mm(AT, mm(P_next, A))
+    q_ = q + mv(AT, l)
+    R_ = R + mm(BT, mm(P_next, B))
+    r_ = r + mv(BT, l)
+    S_ = S + mm(BT, mm(P_next, A))
 
-        # Assert shapes of R_, S_, Q_, q_
-        # nB = R.shape[:-2]
-        # nx = A.shape[-2]
-        # nu = B.shape[-1]
-        # ng = D.shape[-2]
-        # assert Q_.shape == torch.Size([*nB, nx, nx])
-        # assert q_.shape == torch.Size([*nB, nx])
-        # assert R_.shape == torch.Size([*nB, nu + ng, nu + ng])
-        # assert r_.shape == torch.Size([*nB, nu + ng])
+    if C is not None:
+        n_u = R_.shape[-2]
+        n_h = D.shape[-2]
+        dim = n_u + n_h
 
-        # Compute K, k
-        K = torch.linalg.solve(R_, -S_)
-        k = torch.linalg.solve(R_, -r_)
+        R_ext = torch.zeros((*R_.shape[:-2], dim, dim))
+        R_ext[..., :n_u, :n_u] = R_
+        R_ext[..., n_u:, :n_u] = D
+        R_ext[..., :n_u, n_u:] = D.transpose(-2, -1)
+        R_ = R_ext
 
-        # Compute P, p
-        P = Q_ + mm(S_T, K)
-        p = q_ + mv(S_T, k)
+        r_ = torch.cat([r_, d], dim=-1)
 
-        return K, k, P, p
+        S_ = torch.cat([S_, C], dim=-2)
+    S_T = tran(S_)
 
-    def step_forward_(self, x, K, k, P_next, p_next, A, B, b):
-        n_u = B.shape[-1]
-        u_ = mv(K, x) + k
-        u = u_[..., :n_u]
-        nu = u_[..., n_u:]
+    # Compute K, k
+    K = torch.linalg.solve(R_, -S_)
+    k = torch.linalg.solve(R_, -r_)
 
-        x_next = mv(A, x) + mv(B, u) + b
+    # Compute P, p
+    P = Q_ + mm(S_T, K)
+    p = q_ + mv(S_T, k)
 
-        pi = mv(P_next, x_next) + p_next
+    return K, k, P, p
 
-        # Sanity checks
-        # nB = self.nB
-        # n_x = self.prob.n_x
-        # n_u = self.prob.n_u
-        # assert delta_x.shape == torch.Size([nB, n_x])
-        # assert delta_u.shape == torch.Size([nB, n_u])
 
-        return x_next, u, pi, nu
+def lqr_step_forward_(x, K, k, P_next, p_next, A, B, b):
+    n_u = B.shape[-1]
+    u_ = mv(K, x) + k
+    u = u_[..., :n_u]
+    nu = u_[..., n_u:]
 
-    def calc_linearized_cost_terms_(self, stage_idx, x_lin, u_lin):
-        Q = self.prob.lxx(stage_idx, x_lin, u_lin)
-        q = self.prob.lx(stage_idx, x_lin, u_lin)
-        R = self.prob.luu(stage_idx, x_lin, u_lin)
-        r = self.prob.lu(stage_idx, x_lin, u_lin)
-        S = self.prob.lux(stage_idx, x_lin, u_lin)
-        return Q, R, S, q, r
+    x_next = mv(A, x) + mv(B, u) + b
 
-    def calc_linearized_dynamics_terms_(self, x_lin, u_lin, x_next, dynamics):
-        x_pred = dynamics.f(x_lin, u_lin, self.prob.dt)
-        b = x_pred - x_next
-        A = dynamics.fx(x_lin, u_lin, self.prob.dt)
-        B = dynamics.fu(x_lin, u_lin, self.prob.dt)
-        return A, B, b
+    pi = mv(P_next, x_next) + p_next
 
-    def calc_linearized_underactuation_terms_(self, x_lin, u_lin):
-        if self.prob.underactuation is None:
-            return None, None, None
-
-        C = self.prob.underactuation.hx(x_lin, u_lin)
-        D = self.prob.underactuation.hu(x_lin, u_lin)
-        e = self.prob.underactuation.h(x_lin, u_lin)
-        return C, D, e
-
-    def calc_final_cost_terms_(self, x_N):
-        P = self.prob.lxx(-1, x_N)
-        p = self.prob.lx(-1, x_N)
-        return P, p
+    return x_next, u, pi, nu

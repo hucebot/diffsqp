@@ -202,13 +202,13 @@ class Problem(ABC):
             # g_dir_deriv += torch.einsum("bhj,bhj->b", gx_k, dx_k)
             # g_dir_deriv += torch.einsum("bhj,bhj->b", gu_k, du_k)
 
-        x_f = guess.x[:, -1]
-        dx_f = correction.dx[:, -1]
-        lx_f = self.lx(-1, x_f)
-        # gx_f = self.gx(-1, x_f)
+        x_F = guess.x[:, -1]
+        dx_F = correction.dx[:, -1]
+        lx_F = self.lx(-1, x_F)
+        # gx_f = self.gx(-1, x_F)
 
-        l_dir_deriv += torch.einsum("bj,bj->b", lx_k, dx_k)
-        # g_dir_deriv += torch.einsum("bj,bj->b", gx_k, gx_k)
+        l_dir_deriv += torch.einsum("bj,bj->b", lx_F, dx_F)
+        # g_dir_deriv += torch.einsum("bj,bj->b", gx_F, gx_F)
 
         return l_dir_deriv  # , g_dir_deriv
 

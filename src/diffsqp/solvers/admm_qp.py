@@ -97,6 +97,7 @@ def proximal_step_and_residuals(
         Diag_rho_inv = torch.diag_embed(solution.rho_inv[k])
 
         M_k = lqr_mat.M[k]
+        n_k = lqr_mat.n[k]
         dx_hat_k = lqr_solution.dx[:, k]
 
         if k < horizon - 1:
@@ -138,8 +139,8 @@ def proximal_step_and_residuals(
         # ---------------------------------------- #
         new_z = torch.clamp(
             z_hat + torch.einsum("...ii,...i->...i", Diag_rho_inv, solution.ksi[k]),
-            lb,
-            ub,
+            lb - n_k,
+            ub - n_k,
         )
         solution.z[k] = torch.where(dones.unsqueeze(1), solution.z[k], new_z)
 

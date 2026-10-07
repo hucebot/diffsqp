@@ -233,10 +233,10 @@ def sqp_solve(problem: Problem, parameters: SqpParameters, initial_guess: SqpSol
                     #     "LS Iter: ",
                     #     ls_iter,
                     #     "Cost: ",
-                    #     best_cost,
+                    #     torch.max(best_cost),
                     #     "Conv Error: ",
-                    #     best_dyn_inf,
-                    #     best_constr_inf,
+                    #     torch.max(best_dyn_inf),
+                    #     torch.max(best_constr_inf),
                     # )
 
                 # Decrease alpha

@@ -1,22 +1,31 @@
+"""Batched Franka (FP3) end-effector reaching with joint and velocity limits.
+
+Shows how to plug user-defined models into diffsqp:
+  * `KinematicDynamics` subclasses `Dynamics` with x_dot = u (joint velocities).
+  * `EndEffectorTrackingCost` subclasses `Cost` with a 6D pose error computed
+    with bard forward kinematics, using a Gauss-Newton Hessian J^T Q J.
+Joint position limits (`StateBounds`) and joint velocity limits
+(`ControlBounds`) are taken from the FP3 datasheet.
+
+    uv run examples/franka_constrained.py --batch_size 16 --save out/franka
+"""
+
 import argparse
+from dataclasses import dataclass
+from pathlib import Path
+
 import torch
 import bard
 
 from diffsqp.problems import Problem, ProblemParameters
 from diffsqp.costs import LqrCost, Cost
 from diffsqp.solvers import sqp_solve, SqpParameters
-from diffsqp.dynamics.base_dynamics import Dynamics
+from diffsqp.dynamics import Dynamics
 from diffsqp.constraints import StateBounds, ControlBounds
 from diffsqp.types import SqpSolution
+from diffsqp.utils.load_save import save_solution
 
-from dataclasses import dataclass
-from pathlib import Path
-
-from diffsqp.utils.load_save import *
-
-##########################
-# Custom Kinematics Task #
-##########################
+URDF_PATH = Path(__file__).resolve().parent.parent / "resources" / "robots" / "fp3.urdf"
 
 
 @dataclass
@@ -154,14 +163,11 @@ class EndEffectorTrackingCost(Cost):
 
 
 def main(args):
-    device = args.device
-    torch.set_default_device(device)
+    torch.set_default_device(args.device)
     batch_size = args.batch_size
 
-    BASE_DIR = Path(__file__).resolve().parent.parent.parent
-    urdf_path = BASE_DIR / "resources" / "robots" / "fp3.urdf"
-    model = bard.build_model_from_urdf(urdf_path, floating_base=False)
-    model.to(dtype=torch.float32, device=device)
+    model = bard.build_model_from_urdf(URDF_PATH, floating_base=False)
+    model.to(dtype=torch.float32, device=args.device)
     data = bard.create_data(model, max_batch_size=batch_size)
 
     sqp_parameters = SqpParameters(
@@ -211,27 +217,21 @@ def main(args):
             "x_init": [0.0, 0.0, 0.0, -torch.pi / 2.0, 0.0, torch.pi / 2.0, 0.0],
             "x_des": [0.0, 0.0, 0.2, -torch.pi / 2.0, 0.0, torch.pi / 2.0, 0.0],
             "noise_std": [0.05] * 7,
-            # "noise_std": [0.0] * 7,
+            # Joint position (rad) and velocity (rad/s) limits
             "x_lb": [-2.9007, -1.8361, -2.9007, -3.0770, -2.8763, 0.4398, -3.0508],
             "x_ub": [2.9007, 1.8361, 2.9007, -0.1169, 2.8763, 4.6216, 3.0508],
             "u_lb": [-2.62, -2.62, -2.62, -2.62, -5.26, -4.18, -5.26],
             "u_ub": [2.62, 2.62, 2.62, 2.62, 5.26, 4.18, 5.26],
-            # "u_lb": [-10.0] * 7,
-            # "u_ub": [10.0] * 7,
             "q_w": [1e-8] * 7,
             "r_w": [1e-6] * 7,
-            "qf_w": [1e1] * 7,  # Use custom EE tracking cost instead of State Q
+            "qf_w": [1e1] * 7,  # Unused: the terminal cost is the EE tracking cost
         }
     )
 
     system_parameters = KinematicDynamicsParameters()
     dynamics = KinematicDynamics(system_parameters)
-
-    # Create Problem
     problem = Problem(problem_parameters, system_parameters)
     problem.dynamics = dynamics
-
-    # 1 Desired End-Effector position and penalty weights
 
     x_refs = torch.tensor(
         [
@@ -274,100 +274,59 @@ def main(args):
 
     T_ref_batch = T_refs[target_choices]
     x_ref_batch = x_refs[target_choices]
-    print(target_choices)
 
     Q_ee_diag = torch.tensor([1e5, 1e5, 1e5, 1e5, 1e5, 1e5])
     eef_id = model.get_frame_id("fp3_link7")
     ee_cost = EndEffectorTrackingCost(model, data, eef_id, T_ref_batch, Q_ee_diag)
 
-    # Control penalty (velocity minimization)
+    # Regularize towards the start configuration and penalize joint velocities
     Q = problem_parameters.q_w * torch.eye(dynamics.nx).repeat(problem.batch_size, 1, 1)
     R = problem_parameters.r_w * torch.eye(dynamics.nu).repeat(problem.batch_size, 1, 1)
     Qf = problem_parameters.qf_w * torch.eye(dynamics.nx).repeat(
         problem.batch_size, 1, 1
     )
     reg_cost = LqrCost(Q=Q, R=R, x_des=problem_parameters.x_init.detach().clone())
-    final_reg_cost = LqrCost(Q=Qf, x_des=x_ref_batch)
 
-    if args.load:
-        x, u = load_solution(args.load, device=device)
-    else:
-        x = torch.zeros((problem.batch_size, problem.horizon, problem.n_x))
-        for k in range(problem.horizon):
-            x[:, k] = problem_parameters.x_init.clone()
-
-        u = torch.zeros((problem.batch_size, problem.horizon - 1, problem.n_u))
-
-    initial_guess = SqpSolution(
-        x=x,
-        u=u,
-        mu=torch.zeros((problem.batch_size, problem.horizon, problem.n_x)),
-        nu=torch.zeros((problem.batch_size, problem.horizon - 1, problem.n_h)),
-        ksi=[None] * problem.horizon,
+    state_bounds = StateBounds(
+        problem.n_x, problem.n_u, problem_parameters.x_lb, problem_parameters.x_ub
     )
-
-    # Randomise Initial state
-    initial_guess.x[:, 0] = problem_parameters.x_init.clone()
-    noise_std = problem_parameters.noise_std
-    noise_dim = len(noise_std)
-    initial_guess.x[:, 0] += torch.tensor(noise_std) * torch.randn(
-        (batch_size, noise_dim)
+    control_bounds = ControlBounds(
+        problem.n_x, problem.n_u, problem_parameters.u_lb, problem_parameters.u_ub
     )
 
     for k in range(problem.horizon - 1):
-        problem.costs.append(
-            [
-                reg_cost,
-                # ee_cost,
-            ]
-        )
-        problem.constraints[k] = [
-            StateBounds(
-                problem.n_x,
-                problem.n_u,
-                problem_parameters.x_lb,
-                problem_parameters.x_ub,
-            ),
-            ControlBounds(
-                problem.n_x,
-                problem.n_u,
-                problem_parameters.u_lb,
-                problem_parameters.u_ub,
-            ),
-        ]
-    problem.constraints[-1] = [
-        StateBounds(
-            problem.n_x, problem.n_u, problem_parameters.x_lb, problem_parameters.x_ub
-        )
-    ]
-    problem.costs.append(
-        [
-            # final_reg_cost,
-            ee_cost,
-        ]
+        problem.costs.append([reg_cost])
+        problem.constraints[k] = [state_bounds, control_bounds]
+    problem.costs.append([ee_cost])
+    problem.constraints[-1] = [state_bounds]
+
+    # Initial guess: stay at the (perturbed) start configuration
+    initial_guess = SqpSolution(
+        x=problem_parameters.x_init.repeat(batch_size, problem.horizon, 1),
+        u=torch.zeros((batch_size, problem.horizon - 1, problem.n_u)),
+        mu=torch.zeros((batch_size, problem.horizon, problem.n_x)),
+        nu=torch.zeros((batch_size, problem.horizon - 1, problem.n_h)),
+        ksi=[None] * problem.horizon,
     )
+    noise_std = torch.tensor(problem_parameters.noise_std)
+    initial_guess.x[:, 0] += noise_std * torch.randn((batch_size, len(noise_std)))
 
-    print("Solving End-Effector Tracking Task...")
+    print(f"Solving {batch_size} Franka end-effector reaching problems...")
     solution, log = sqp_solve(problem, sqp_parameters, initial_guess)
-
     print(log)
 
-    import matplotlib.pyplot as plt
-    from diffsqp.utils.plot import plot_trajectories
-
-    print(solution.x[0, -1].tolist())
-    plot_trajectories(solution.x, solution.u)
-    plt.show()
+    T_final = bard.forward_kinematics(model, data, eef_id, q=solution.x[:, -1])
+    pos_error = torch.norm(T_final[:, :3, 3] - T_ref_batch[:, :3, 3], dim=-1)
+    print(f"Final EE position error (max over batch): {pos_error.max().item():.2e} m")
+    print(f"Constraint violation (max over batch): {max(log.constraint_violation):.2e}")
 
     if args.save:
-        print("Saving solution to ", args.save, "...")
-        save_solution(solution, args.save, x_des=x_ref_batch)
+        save_solution(solution, args.save, x_des=x_des)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-batch_size", type=int, help="Batch size", default=1)
-    parser.add_argument("-device", type=str, help="Batch size", default="cpu")
-    parser.add_argument("-save", type=str, help="Filename to save result")
-    parser.add_argument("-load", type=str, help="Filename to load result")
+    parser.add_argument("--batch_size", type=int, default=8, help="Number of problems")
+    parser.add_argument("--device", type=str, default="cpu", help="cpu or cuda")
+    parser.add_argument("--save", type=str, help="Save path (without .pt)")
     main(parser.parse_args())

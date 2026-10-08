@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Run relative to this script so paths resolve from any working directory
+cd "$(dirname "$0")" || exit 1
+
 # ==========================================
 # Experiment Configuration
 # ==========================================
@@ -7,7 +10,7 @@ N=5                                   # Number of times to run each batch size
 BATCH_SIZES=(1 32 1024 32768)         # Array of batch sizes to test
 DEVICE="cuda"                         # Target device (cpu or cuda)
 GPU_ID=0                              # GPU to monitor
-SCRIPT="mpc_pytorch.py" # The target script
+SCRIPT="quadrotor/turbo_mpc.py" # The target script
 
 # ==========================================
 # Execution Loop

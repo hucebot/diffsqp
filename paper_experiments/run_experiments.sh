@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Run relative to this script so paths resolve from any working directory
+cd "$(dirname "$0")" || exit 1
+
 # ==========================================
 # Experiment Configuration
 # ==========================================

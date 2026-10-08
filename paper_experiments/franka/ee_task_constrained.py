@@ -172,7 +172,7 @@ def main(args):
             "admm_sigma": 1e-6,
             # Rho related
             "admm_reset_rho": False,
-            "admm_update_rho": False,
+            "admm_update_rho": True,
             "admm_rho_init": 0.8,
             "admm_rho_min": 1e-6,
             "admm_rho_max": 10.0,
@@ -206,21 +206,19 @@ def main(args):
             "inverse_dynamics": False,
             "n_h": 0,
             "batch_size": batch_size,
-            "dt": 0.01,
-            "tf": 1.0,
+            "dt": 0.005,
+            "tf": 0.3,
             "x_init": [0.0, 0.0, 0.0, -torch.pi / 2.0, 0.0, torch.pi / 2.0, 0.0],
             "x_des": [0.0, 0.0, 0.2, -torch.pi / 2.0, 0.0, torch.pi / 2.0, 0.0],
             "noise_std": [0.05] * 7,
             # "noise_std": [0.0] * 7,
             "x_lb": [-2.9007, -1.8361, -2.9007, -3.0770, -2.8763, 0.4398, -3.0508],
             "x_ub": [2.9007, 1.8361, 2.9007, -0.1169, 2.8763, 4.6216, 3.0508],
-            # "u_lb": [-2.62, -2.62, -2.62, -2.62, -5.26, -4.18, -5.26],
-            # "u_ub": [2.62, 2.62, 2.62, 2.62, 5.26, 4.18, 5.26],
-            "u_lb": [-20.0] * 7,
-            "u_ub": [20.0] * 7,
+            "u_lb": [-2.62, -2.62, -2.62, -2.62, -5.26, -4.18, -5.26],
+            "u_ub": [2.62, 2.62, 2.62, 2.62, 5.26, 4.18, 5.26],
             "q_w": [1e-3] * 7,
             "r_w": [1e-1, 1e-1, 1e-1, 1e-1, 1e-1, 2e-1, 1e-1],
-            "qf_w": [1e2] * 7,  # Use custom EE tracking cost instead of State Q
+            "qf_w": [1e1] * 7,  # Use custom EE tracking cost instead of State Q
         }
     )
 
@@ -233,14 +231,31 @@ def main(args):
 
     # 1 Desired End-Effector position and penalty weights
 
-    x_des = torch.Tensor(
+    # x_des = problem_parameters.x_des.detach().clone()
+
+    # x_des = torch.tensor([0.0000, 0.0000, 0.0000, -1.5708, 0.0000, 1.5708, 0.0000])
+    # T_ref = torch.tensor(
+    #     [
+    #         [1.0, 0.0, 0.0, 0.5545],
+    #         [0.0, 1.0, 0.0, 0.0000],
+    #         [0.0, 0.0, 1.0, 0.7315],
+    #         [0.0, 0.0, 0.0, 1.0000],
+    #     ]
+    # )
+
+    x_des = torch.tensor([0.2800, 0.3000, 0.0000, -1.7900, 0.0000, 2.1200, 0.0000])
+    T_ref = torch.tensor(
         [
-            [-0.7300, 0.5100, -0.0400, -1.5708, 0.5900, 2.2700, 0.0000],
-            [0.6500, 0.0000, 0.3800, -1.2200, 0.0000, 2.1900, 0.0000],
-            [0.0000, 0.4700, -0.2600, -1.5708, -0.5700, 2.1500, -0.0500],
-            [0.0600, 0.3700, 0.2200, -1.3800, 0.4300, 2.5800, -1.3900],
+            [9.6062e-01, 2.7636e-01, 2.8827e-02, 6.0978e-01],
+            [2.7623e-01, -9.6106e-01, 8.2894e-03, 1.7534e-01],
+            [2.9995e-02, -8.4831e-16, -9.9955e-01, 4.9424e-01],
+            [0.0000e00, 0.0000e00, 0.0000e00, 1.0000e00],
         ]
     )
+
+    Q_ee_diag = torch.tensor([5e1, 5e1, 5e1, 5e1, 5e1, 5e1])
+    eef_id = model.get_frame_id("fp3_link7")
+    ee_cost = EndEffectorTrackingCost(model, data, eef_id, T_ref, Q_ee_diag)
 
     # Control penalty (velocity minimization)
     Q = problem_parameters.q_w * torch.eye(dynamics.nx).repeat(problem.batch_size, 1, 1)
@@ -277,7 +292,12 @@ def main(args):
     )
 
     for k in range(problem.horizon - 1):
-        problem.costs.append([reg_cost])
+        problem.costs.append(
+            [
+                reg_cost,
+                ee_cost,
+            ]
+        )
         problem.constraints[k] = [
             StateBounds(
                 problem.n_x,
@@ -297,7 +317,12 @@ def main(args):
             problem.n_x, problem.n_u, problem_parameters.x_lb, problem_parameters.x_ub
         )
     ]
-    problem.costs.append([final_reg_cost])
+    problem.costs.append(
+        [
+            # final_reg_cost,
+            ee_cost,
+        ]
+    )
 
     print("Solving End-Effector Tracking Task...")
     solution, log = sqp_solve(problem, sqp_parameters, initial_guess)
@@ -318,10 +343,8 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-batch_size", type=int, help="Batch size", default=4)
+    parser.add_argument("-batch_size", type=int, help="Batch size", default=1)
     parser.add_argument("-device", type=str, help="Batch size", default="cpu")
-    parser.add_argument(
-        "-save", type=str, help="Filename to save result", default="franka_4_targets"
-    )
+    parser.add_argument("-save", type=str, help="Filename to save result")
     parser.add_argument("-load", type=str, help="Filename to load result")
     main(parser.parse_args())

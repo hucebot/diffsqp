@@ -24,7 +24,7 @@ def main(args):
     sqp_parameters = SqpParameters(
         **{
             ## ADMM ##
-            "admm_max_iter": 30,
+            "admm_max_iter": 150,
             "admm_alpha": 1.6,
             "admm_sigma": 1e-6,
             # Rho related
@@ -50,8 +50,8 @@ def main(args):
             "merit_mu": 1e7,
             "armijo_beta": 1e-3,
             "ls_max_iter": 10,
-            "sqp_cost_eps": 1e-1,
-            "sqp_viol_eps": 1e-4,
+            "sqp_cost_eps": 1e-10,
+            "sqp_viol_eps": 1e-10,
             "check_complementarity": False,
             "qp_solver": "lqr",
             "ls_function": "filter",

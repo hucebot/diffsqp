@@ -15,7 +15,9 @@ wheels/
 *.png
 *.pdf
 *.mp4
+*.gif
 
 # Experiment results
+*.txt
 *.json
 *.pt

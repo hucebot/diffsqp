@@ -1,0 +1,173 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+\usepackage{hyperref}
+\usepackage{bm}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\title{DiffSQP: Batched SQP Optimal Control Solver}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This document outlines the mathematical formulation of the batched Sequential Quadratic Programming (SQP) optimal control solver implemented in the \texttt{diffsqp} repository. The solver resolves nonlinear optimal control problems using an outer SQP loop that formulates Quadratic Programming (QP) subproblems. These QPs are subsequently solved using the Alternating Direction Method of Multipliers (ADMM). The unconstrained steps within ADMM are evaluated efficiently using a Riccati recursion solver designed to handle state-control equality constraints arising from underactuated dynamics.
+\end{abstract}
+
+\section{SQP Solver}
+
+The optimal control problem seeks a state trajectory $\mathbf{x} = \{x_k\}_{k=0}^H$ and control trajectory $\mathbf{u} = \{u_k\}_{k=0}^{H-1}$ that minimize a given cost function subject to nonlinear dynamics and algebraic constraints. At each iteration, the SQP method linearizes the problem around the current guess $(x, u)$ to form a Quadratic Programming (QP) subproblem. Solving this QP yields search directions $(dx, du)$ for the state and control variables respectively.
+
+\subsection{Line Search}
+Once the QP subproblem yields search directions $(dx, du)$, a backtracking line search determines the step size $\alpha \in (0, 1]$. We update the guess as:
+\begin{align*}
+    x^{new} &= x + \alpha dx \\
+    u^{new} &= u + \alpha du
+\end{align*}
+The solver supports two acceptance criteria: the \textbf{merit} function and the \textbf{filter} method. The line search algorithm initializes $\alpha = 1$ and iteratively halves it ($\alpha \gets 0.5 \alpha$) until the acceptance criteria are met or the maximum number of line search iterations is reached.
+
+\paragraph{Merit Function}
+The merit function scalarizes the cost and constraint violations:
+\begin{equation}
+    \phi(x, u) = J(x, u) + \mu_{\text{merit}} \max( \text{dyn\_inf}, \text{constr\_inf} )
+\end{equation}
+where $J(x, u)$ is the objective cost, and $\text{dyn\_inf}$ and $\text{constr\_inf}$ represent the infinity norms ($\| \cdot \|_\infty$) of the dynamics violations and generic constraint violations, respectively.
+
+The step is accepted based on the Armijo condition, which ensures sufficient decrease:
+\begin{equation}
+    \phi(x^{new}, u^{new}) < \phi(x, u) + \beta \alpha \nabla_{d} \phi(x, u)
+\end{equation}
+where $\beta \in (0, 1)$ is the Armijo parameter (\texttt{armijo\_beta}) and $\nabla_d \phi$ is the directional derivative of the merit function along the proposed descent direction $(dx, du)$.
+
+\paragraph{Filter Method}
+The filter method avoids scalarization by maintaining a Pareto frontier of cost and constraint violations. A step is accepted if it strictly improves either the objective cost, the dynamics violation, or the constraint violation compared to the best previously recorded values during the current iteration:
+\begin{equation}
+    (J(x^{new}, u^{new}) < J_{best}) \lor (\text{dyn\_inf}^{new} < \text{dyn\_inf}_{best}) \lor (\text{constr\_inf}^{new} < \text{constr\_inf}_{best})
+\end{equation}
+
+\subsection{Termination Criteria}
+The outer SQP algorithm terminates when all trajectories in the batch satisfy both the stationarity (primal feasibility) and constraint satisfaction conditions.
+\begin{enumerate}
+    \item \textbf{Stationarity (Primal Feasibility):} The proposed search steps must fall below a defined threshold:
+    \begin{equation}
+        \| dx \|_\infty < \epsilon_{\text{cost}} \quad \text{and} \quad \| du \|_\infty < \epsilon_{\text{cost}}
+    \end{equation}
+    \item \textbf{Constraint Satisfaction:} The maximum constraint violation across the trajectory must be below the constraint tolerance:
+    \begin{equation}
+        \max( \text{dyn\_inf}, \text{constr\_inf} ) < \epsilon_{\text{viol}}
+    \end{equation}
+    \item \textbf{Complementarity (Optional):} If strict complementarity checks are enabled, the complementarity slackness infinity norm must also satisfy:
+    \begin{equation}
+        \text{comp\_inf} < \epsilon_{\text{viol}}
+    \end{equation}
+\end{enumerate}
+
+\section{ADMM for QP Subproblem}
+The QP subproblem features a quadratic approximation of the Lagrangian and linearized constraints. General linear inequality constraints take the form:
+\begin{equation}
+    \text{lb}_k \le M_k dx_k + N_k du_k + n_k \le \text{ub}_k
+\end{equation}
+where $M_k$ and $N_k$ are the Jacobian matrices evaluated at stage $k$, and $n_k$ is the constraint offset.
+
+To solve this QP efficiently, ADMM introduces slack variables $z_k$ and dual variables $\xi_k$ (represented as \texttt{ksi} in the codebase). The constraint is decoupled into an equality constraint $M_k dx_k + N_k du_k = z_k$, alongside the bounds restriction $\text{lb}_k - n_k \le z_k \le \text{ub}_k - n_k$.
+
+\subsection{ADMM Algorithm Updates}
+Each iteration of the ADMM inner loop performs the following sequence of updates:
+\begin{enumerate}
+    \item \textbf{Solve Unconstrained LQR:} Compute unconstrained search directions $(dx^{hat}, du^{hat})$ by solving an LQR problem equipped with augmented matrices (detailed in Section \ref{sec:constrained_matrices}).
+    \item \textbf{Proximal Relaxation Step:}
+    \begin{align}
+        dx &= \alpha dx^{hat} + (1 - \alpha) dx_{prev} \\
+        du &= \alpha du^{hat} + (1 - \alpha) du_{prev}
+    \end{align}
+    where $\alpha$ is the ADMM relaxation parameter.
+    \item \textbf{Update Slack Variables $z$:}
+    First, the target slack value is calculated:
+    \begin{equation}
+        \hat{z}_k = \alpha (M_k dx^{hat}_k + N_k du^{hat}_k) + (1 - \alpha) z_{k, \text{prev}} 
+    \end{equation}
+    Then, it is projected onto the feasible bounds:
+    \begin{equation}
+        z_k = \text{clamp}\left(\hat{z}_k + \text{diag}(\rho_k)^{-1} \xi_k, \ \text{lb}_k - n_k, \ \text{ub}_k - n_k\right)
+    \end{equation}
+    \item \textbf{Update Dual Variables $\xi$:}
+    \begin{equation}
+        \xi_k = \xi_k + \text{diag}(\rho_k) (\hat{z}_k - z_k)
+    \end{equation}
+\end{enumerate}
+The penalty parameters $\rho_k$ are dynamically updated during the solve based on the primal and dual residuals to accelerate convergence.
+
+\subsection{Matrices Passed to Riccati Solver} \label{sec:constrained_matrices}
+To penalize constraint violations during the LQR step, the ADMM augmented Lagrangian modifies the nominal QP cost matrices $Q, q, R, r, S$. Given the proximal weight $\sigma$ and the diagonal penalty parameter matrix $\text{diag}(\rho_k)$, the constrained matrices $(Q_c, q_c, R_c, r_c, S_c)$ passed to the Riccati solver are computed as:
+\begin{align}
+    Q_{c, k} &= Q_k + M_k^T \text{diag}(\rho_k) M_k + \sigma I \\
+    q_{c, k} &= q_k + M_k^T \xi_k - M_k^T \text{diag}(\rho_k) z_k - \sigma dx_{prev, k} \\
+    R_{c, k} &= R_k + N_k^T \text{diag}(\rho_k) N_k + \sigma I \\
+    r_{c, k} &= r_k + N_k^T \xi_k - N_k^T \text{diag}(\rho_k) z_k - \sigma du_{prev, k} \\
+    S_{c, k} &= S_k + N_k^T \text{diag}(\rho_k) M_k
+\end{align}
+These modifications seamlessly embed the ADMM dual updates and proximal regularization directly into the unconstrained LQR solve, retaining its $O(H)$ time complexity.
+
+\section{Riccati Recursion}
+The Riccati solver optimally solves the unconstrained LQR problem defined by $(Q_c, q_c, R_c, r_c, S_c)$ from the ADMM step, subject to linearized dynamics:
+\begin{equation}
+    dx_{k+1} = A_k dx_k + B_k du_k + b_k
+\end{equation}
+It natively handles potential stage-wise state-control equality constraints (such as underactuation constraints), represented generally as:
+\begin{equation}
+    C_k dx_k + D_k du_k + d_k = 0
+\end{equation}
+
+\subsection{Backward Pass}
+Starting from the terminal stage with $P_H = Q_{c, H}$ and $p_H = q_{c, H}$, the backward pass computes the feedback gains $K_k$, feedforward terms $k_k$, and the value function matrices $P_k, p_k$ for $k = H-1, \dots, 0$.
+
+We define the intermediate value function propagation parameters:
+\begin{align}
+    l_k &= P_{k+1} b_k + p_{k+1} \\
+    Q'_k &= Q_{c, k} + A_k^T P_{k+1} A_k \\
+    q'_k &= q_{c, k} + A_k^T l_k \\
+    R'_k &= R_{c, k} + B_k^T P_{k+1} B_k + \gamma I \\
+    r'_k &= r_{c, k} + B_k^T l_k \\
+    S'_k &= S_{c, k} + B_k^T P_{k+1} A_k
+\end{align}
+where $\gamma$ is an adaptive Levenberg-Marquardt regularization term ensuring positive-definiteness of the control Hessian.
+
+When underactuation equality constraints are present, we form an extended KKT system by adjoining $C_k$, $D_k$, and $d_k$ to the nominal matrices:
+\begin{equation}
+    R_{ext} = \begin{bmatrix} R'_k & D_k^T \\ D_k & -\epsilon I \end{bmatrix}, \quad
+    r_{ext} = \begin{bmatrix} r'_k \\ d_k \end{bmatrix}, \quad
+    S_{ext} = \begin{bmatrix} S'_k \\ C_k \end{bmatrix}
+\end{equation}
+where $\epsilon = 10^{-8}$ is a dual regularization parameter resolving potential rank deficiencies in the constraint Jacobian.
+
+The feedback policies and underactuation constraint multipliers are jointly solved via a standard linear solve (LU factorization is used since $R_{ext}$ represents a symmetric indefinite saddle-point matrix):
+\begin{align}
+    \begin{bmatrix} K_{u, k} \\ K_{\nu, k} \end{bmatrix} &= - R_{ext}^{-1} S_{ext} \\
+    \begin{bmatrix} k_{u, k} \\ k_{\nu, k} \end{bmatrix} &= - R_{ext}^{-1} r_{ext}
+\end{align}
+
+The value function parameters for the current stage are updated sequentially:
+\begin{align}
+    P_k &= Q'_k + (S_{ext})^T \begin{bmatrix} K_{u, k} \\ K_{\nu, k} \end{bmatrix} \\
+    p_k &= q'_k + (S_{ext})^T \begin{bmatrix} k_{u, k} \\ k_{\nu, k} \end{bmatrix}
+\end{align}
+If no underactuation constraints exist, $R_{ext}, r_{ext}, S_{ext}$ naturally reduce to $R'_k, r'_k, S'_k$ and a faster Cholesky factorization can be employed instead of LU.
+
+\subsection{Forward Pass}
+The forward pass propagates the system forward in time starting from the initial state deviation ($dx_0 = 0$) using the pre-computed optimal policies:
+\begin{align}
+    du_k &= K_{u, k} dx_k + k_{u, k} \\
+    dx_{k+1} &= A_k dx_k + B_k du_k + b_k
+\end{align}
+Simultaneously, the forward pass reconstructs the Lagrange multipliers for the dynamics constraints ($\mu$) and underactuation constraints ($\nu$):
+\begin{align}
+    \nu_k &= K_{\nu, k} dx_k + k_{\nu, k} \\
+    \mu_{k+1} &= P_{k+1} dx_{k+1} + p_{k+1}
+\end{align}
+These multipliers characterize the exact sensitivities of the local QP solution and confirm the algorithmic satisfaction of the first-order KKT necessary conditions.
+
+\end{document}
